@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Button } from "./ui/button";
-import { Text } from "./ui/text";
 
 export function ServerConfig() {
   const [localUrl, setLocalUrl] = useState("ws://localhost:8080");
