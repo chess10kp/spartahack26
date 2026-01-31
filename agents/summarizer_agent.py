@@ -5,8 +5,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, TypedDict
 
 import chromadb
-from google import genai
-from google.genai import types
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langgraph.graph import END, START, StateGraph
 
 
@@ -31,55 +30,31 @@ def _read_file(path: str) -> str:
         return f.read()
 
 
-def _get_genai_client() -> genai.Client:
+def _get_api_key() -> str:
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         raise EnvironmentError("GEMINI_API_KEY (or GOOGLE_API_KEY) is required.")
-    return genai.Client(api_key=api_key)
-
-
-def _extract_embedding_values(result) -> List[List[float]]:
-    items = []
-    if hasattr(result, "embeddings") and result.embeddings:
-        items = result.embeddings
-    elif hasattr(result, "embedding") and result.embedding:
-        items = [result.embedding]
-    else:
-        raise ValueError("No embeddings found in response.")
-
-    vectors = []
-    for item in items:
-        if isinstance(item, dict) and "values" in item:
-            vectors.append(item["values"])
-        elif hasattr(item, "values"):
-            vectors.append(item.values)
-        else:
-            vectors.append(item)
-    return vectors
+    return api_key
 
 
 def embed_texts(texts: List[str], model: str = DEFAULT_EMBEDDING_MODEL) -> List[List[float]]:
-    client = _get_genai_client()
-    result = client.models.embed_content(model=model, contents=texts)
-    return _extract_embedding_values(result)
+    embeddings = GoogleGenerativeAIEmbeddings(model=model, google_api_key=_get_api_key())
+    return embeddings.embed_documents(texts)
 
 
 def generate_summary(transcript: str, model: str = DEFAULT_SUMMARY_MODEL) -> str:
-    client = _get_genai_client()
+    llm = ChatGoogleGenerativeAI(model=model, google_api_key=_get_api_key(), temperature=0.2, max_output_tokens=160)
     prompt = (
         "Summarize the transcript in 3 concise bullet points. "
         "Keep it short and factual."
     )
-    response = client.models.generate_content(
-        model=model,
-        contents=f"{prompt}\n\nTranscript:\n{transcript}",
-        config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=160),
-    )
-    return (response.text or "").strip()
+    response = llm.invoke(f"{prompt}\n\nTranscript:\n{transcript}")
+    return (response.content or "").strip()
 
 
 def cosine_similarity(a: List[float], b: List[float]) -> float:
-    if len(a) != len(b):
+    if
+ len(a) != len(b):
         raise ValueError("Embedding dimensions must match.")
     return sum(x * y for x, y in zip(a, b))
 
