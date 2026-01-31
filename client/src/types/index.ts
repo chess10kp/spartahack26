@@ -1,4 +1,5 @@
 export interface Capabilities {
+  username: string;
   languages: string[];
   frameworks: string[];
 }
@@ -53,6 +54,7 @@ export interface WebSocketMessage {
 
 export interface AppState {
   serverUrl: string;
+  username: string;
   isConnected: boolean;
   connectionError?: string;
   capabilities: Capabilities | null;
@@ -65,6 +67,7 @@ export interface AppState {
 
 export type AppActions = {
   setServerUrl: (url: string) => void;
+  setUsername: (username: string) => void;
   setConnected: (connected: boolean) => void;
   setConnectionError: (error?: string) => void;
   setCapabilities: (caps: Capabilities) => void;
@@ -76,4 +79,5 @@ export type AppActions = {
   addScreenshot: (screenshot: Screenshot) => void;
   attachScreenshot: (taskId: string, screenshotId: string) => void;
   setCurrentView: (view: AppState["currentView"]) => void;
+  logout: () => void;
 };

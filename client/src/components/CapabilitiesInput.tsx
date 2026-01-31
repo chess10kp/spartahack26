@@ -1,29 +1,42 @@
-import { useState, FormEvent } from 'react';
-import { useStore } from '../store/useStore';
-import { useWebSocket } from '../hooks/useWebSocket';
-import { Capabilities } from '../types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Button } from './ui/button';
+import { useState, FormEvent } from "react";
+import { useStore } from "../store/useStore";
+import { useWebSocket } from "../hooks/useWebSocket";
+import { Capabilities } from "../types";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "./ui/card";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Button } from "./ui/button";
 
 export function CapabilitiesInput() {
-  const [languages, setLanguages] = useState('');
-  const [frameworks, setFrameworks] = useState('');
-  const { setCapabilities, setCurrentView, capabilities } = useStore();
+  const [languages, setLanguages] = useState("Python");
+  const [frameworks, setFrameworks] = useState("React");
+  const { setCapabilities, setCurrentView, capabilities, username } = useStore();
   const { sendMessage } = useWebSocket();
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    
+
     const caps: Capabilities = {
-      languages: languages.split(',').map(s => s.trim()).filter(Boolean),
-      frameworks: frameworks.split(',').map(s => s.trim()).filter(Boolean)
+      username,
+      languages: languages
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      frameworks: frameworks
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
     };
 
     setCapabilities(caps);
-    sendMessage({ type: 'register_capabilities', data: caps });
-    setCurrentView('dashboard');
+    sendMessage({ type: "register_capabilities", data: caps });
+    setCurrentView("dashboard");
   };
 
   if (capabilities) {
@@ -41,16 +54,16 @@ export function CapabilitiesInput() {
               <div>
                 <Label>Languages</Label>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {capabilities.languages.join(', ')}
+                  {capabilities.languages.join(", ")}
                 </p>
               </div>
               <div>
                 <Label>Frameworks & Libraries</Label>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {capabilities.frameworks.join(', ')}
+                  {capabilities.frameworks.join(", ")}
                 </p>
               </div>
-              <Button onClick={() => setCurrentView('dashboard')}>
+              <Button onClick={() => setCurrentView("dashboard")}>
                 Go to Dashboard
               </Button>
             </div>

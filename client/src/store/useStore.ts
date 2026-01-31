@@ -7,10 +7,12 @@ type AppStore = AppState &
   };
 
 const savedServerUrl = localStorage.getItem("serverUrl") || "";
+const savedUsername = localStorage.getItem("username") || "";
 const savedCapabilities = localStorage.getItem("capabilities");
 
 export const useStore = create<AppStore>((set, get) => ({
   serverUrl: savedServerUrl,
+  username: savedUsername,
   isConnected: false,
   capabilities: savedCapabilities ? JSON.parse(savedCapabilities) : null,
   tasks: [],
@@ -22,6 +24,11 @@ export const useStore = create<AppStore>((set, get) => ({
   setServerUrl: (url) => {
     localStorage.setItem("serverUrl", url);
     set({ serverUrl: url });
+  },
+
+  setUsername: (username) => {
+    localStorage.setItem("username", username);
+    set({ username });
   },
 
   setConnected: (connected) =>
@@ -89,12 +96,14 @@ export const useStore = create<AppStore>((set, get) => ({
   logout: () => {
     // Clear localStorage
     localStorage.removeItem("serverUrl");
+    localStorage.removeItem("username");
     localStorage.removeItem("capabilities");
     localStorage.removeItem("screenshots");
 
     // Reset state to initial values
     set({
       serverUrl: "",
+      username: "",
       isConnected: false,
       capabilities: null,
       tasks: [],
