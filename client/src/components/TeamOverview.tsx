@@ -1,4 +1,7 @@
 import { TeamMember } from '../types';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Avatar, AvatarFallback } from './ui/avatar';
+import { Badge } from './ui/badge';
 
 interface TeamOverviewProps {
   teamMembers: TeamMember[];
@@ -7,102 +10,61 @@ interface TeamOverviewProps {
 export function TeamOverview({ teamMembers }: TeamOverviewProps) {
   if (teamMembers.length === 0) {
     return (
-      <div style={{ 
-        textAlign: 'center', 
-        padding: '40px', 
-        color: '#999',
-        border: '2px dashed #ddd',
-        borderRadius: '8px'
-      }}>
-        No team members available
-      </div>
+      <Card>
+        <CardContent className="py-10 text-center text-muted-foreground">
+          No team members available
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div>
-      <h2 style={{ marginBottom: '16px' }}>Team Overview</h2>
-      <div style={{ display: 'grid', gap: '12px' }}>
+    <Card>
+      <CardHeader>
+        <CardTitle>Team Overview</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4">
         {teamMembers.map(member => (
           <div
             key={member.id}
-            style={{
-              border: '1px solid #ddd',
-              borderRadius: '8px',
-              padding: '16px',
-              backgroundColor: '#fff',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}
+            className="flex justify-between items-start gap-4 p-4 border rounded-lg"
           >
-            <div>
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '12px',
-                marginBottom: '8px'
-              }}>
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '50%',
-                  backgroundColor: '#2196f3',
-                  color: 'white',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 'bold',
-                  fontSize: '18px'
-                }}>
+            <div className="flex gap-3">
+              <Avatar size="lg">
+                <AvatarFallback className="bg-primary text-primary-foreground">
                   {member.name.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <div className="font-semibold">{member.name}</div>
+                <div className="text-sm text-muted-foreground">
+                  {member.completedTasks} task(s) completed
                 </div>
-                <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '16px' }}>{member.name}</div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>
-                    {member.completedTasks} task(s) completed
+                
+                {member.currentTask ? (
+                  <div className="text-sm mt-2 p-2 bg-muted rounded">
+                    <Badge variant="outline" className="mr-2">Current</Badge>
+                    {member.currentTask.title}
                   </div>
-                </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground italic mt-2">
+                    No active task
+                  </div>
+                )}
               </div>
-              
-              {member.currentTask ? (
-                <div style={{ 
-                  fontSize: '14px', 
-                  color: '#333',
-                  marginTop: '8px',
-                  padding: '8px',
-                  backgroundColor: '#f5f5f5',
-                  borderRadius: '4px'
-                }}>
-                  <strong>Current:</strong> {member.currentTask.title}
-                </div>
-              ) : (
-                <div style={{ 
-                  fontSize: '14px', 
-                  color: '#999',
-                  marginTop: '8px',
-                  fontStyle: 'italic'
-                }}>
-                  No active task
-                </div>
-              )}
             </div>
 
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ 
-                fontSize: '24px', 
-                fontWeight: 'bold',
-                color: '#4caf50'
-              }}>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-green-600">
                 {member.completedTasks}
               </div>
-              <div style={{ fontSize: '12px', color: '#666' }}>
+              <div className="text-xs text-muted-foreground">
                 Completed
               </div>
             </div>
           </div>
         ))}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

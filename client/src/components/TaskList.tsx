@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Task } from '../types';
 import { TaskItem } from './TaskItem';
+import { Button } from './ui/button';
 
 interface TaskListProps {
   tasks: Task[];
@@ -15,64 +16,48 @@ export function TaskList({ tasks, onStatusChange, onCaptureScreenshot }: TaskLis
     ? tasks 
     : tasks.filter(task => task.status === filter);
 
+  const statusCounts = {
+    all: tasks.length,
+    pending: tasks.filter(t => t.status === 'pending').length,
+    in_progress: tasks.filter(t => t.status === 'in_progress').length,
+    completed: tasks.filter(t => t.status === 'completed').length
+  };
+
   return (
     <div>
-      <div style={{ 
-        display: 'flex', 
-        gap: '8px', 
-        marginBottom: '16px',
-        flexWrap: 'wrap'
-      }}>
-        <button
+      <div className="flex flex-wrap gap-2 mb-4">
+        <Button
+          size="sm"
+          variant={filter === 'all' ? 'default' : 'outline'}
           onClick={() => setFilter('all')}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: filter === 'all' ? '#2196f3' : '#e0e0e0',
-            color: filter === 'all' ? 'white' : '#333'
-          }}
         >
-          All ({tasks.length})
-        </button>
-        <button
+          All ({statusCounts.all})
+        </Button>
+        <Button
+          size="sm"
+          variant={filter === 'pending' ? 'default' : 'outline'}
           onClick={() => setFilter('pending')}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: filter === 'pending' ? '#9e9e9e' : '#e0e0e0',
-            color: filter === 'pending' ? 'white' : '#333'
-          }}
         >
-          Pending ({tasks.filter(t => t.status === 'pending').length})
-        </button>
-        <button
+          Pending ({statusCounts.pending})
+        </Button>
+        <Button
+          size="sm"
+          variant={filter === 'in_progress' ? 'default' : 'outline'}
           onClick={() => setFilter('in_progress')}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: filter === 'in_progress' ? '#2196f3' : '#e0e0e0',
-            color: filter === 'in_progress' ? 'white' : '#333'
-          }}
         >
-          In Progress ({tasks.filter(t => t.status === 'in_progress').length})
-        </button>
-        <button
+          In Progress ({statusCounts.in_progress})
+        </Button>
+        <Button
+          size="sm"
+          variant={filter === 'completed' ? 'default' : 'outline'}
           onClick={() => setFilter('completed')}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: filter === 'completed' ? '#4caf50' : '#e0e0e0',
-            color: filter === 'completed' ? 'white' : '#333'
-          }}
         >
-          Completed ({tasks.filter(t => t.status === 'completed').length})
-        </button>
+          Completed ({statusCounts.completed})
+        </Button>
       </div>
 
       {filteredTasks.length === 0 ? (
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '40px', 
-          color: '#999',
-          border: '2px dashed #ddd',
-          borderRadius: '8px'
-        }}>
+        <div className="text-center py-10 text-muted-foreground border-2 border-dashed rounded-lg">
           No tasks found
         </div>
       ) : (
