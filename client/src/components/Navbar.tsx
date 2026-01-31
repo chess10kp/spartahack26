@@ -1,9 +1,17 @@
 import { useStore } from "../store/useStore";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
+import { useWebSocket } from "../hooks/useWebSocket";
 
 export function Navbar() {
-  const { currentView, setCurrentView, isConnected, serverUrl } = useStore();
+  const { currentView, setCurrentView, isConnected, serverUrl, logout } =
+    useStore();
+  const { disconnect } = useWebSocket();
+
+  const handleDisconnect = () => {
+    disconnect();
+    logout();
+  };
 
   return (
     <nav className="border-b bg-card">
@@ -54,6 +62,17 @@ export function Navbar() {
               {isConnected ? "Connected" : "Disconnected"}
             </span>
           </div>
+
+          {serverUrl && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDisconnect}
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              Disconnect
+            </Button>
+          )}
         </div>
       </div>
     </nav>
