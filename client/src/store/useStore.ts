@@ -43,14 +43,17 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   setTasks: (tasks) =>
-    set({ tasks, myTasks: tasks.filter((task) => task.assignee === "me") }),
+    set({
+      tasks,
+      myTasks: tasks.filter((task) => task.assignee === get().username),
+    }),
 
   addTask: (task) => {
     const state = get();
     const newTasks = [...state.tasks, task];
     set({
       tasks: newTasks,
-      myTasks: newTasks.filter((t) => t.assignee === "me"),
+      myTasks: newTasks.filter((t) => t.assignee === state.username),
     });
   },
 
@@ -61,7 +64,7 @@ export const useStore = create<AppStore>((set, get) => ({
     );
     set({
       tasks: newTasks,
-      myTasks: newTasks.filter((t) => t.assignee === "me"),
+      myTasks: newTasks.filter((t) => t.assignee === state.username),
     });
   },
 
