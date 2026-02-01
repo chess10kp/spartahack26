@@ -9,6 +9,7 @@ dependencies = [
     "opencv-python",
     "pynput",
     "numpy",
+    "pygame",
 ]
 
 # System dependencies that need to be installed via package manager:

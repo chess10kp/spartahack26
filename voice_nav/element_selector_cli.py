@@ -3,6 +3,7 @@
 import logging
 from itertools import product
 from math import ceil, log
+import pygame
 
 import PIL.ImageGrab
 from cv2 import (
@@ -80,8 +81,68 @@ def get_hints(children, alphabet: str = "asdfghjkl"):
     return hints
 
 
+def get_input_via_pygame():
+    """Open a small pygame window to get user input."""
+    import os
+
+    os.environ["SDL_VIDEO_WINDOW_POS"] = "100,100"
+    pygame.init()
+
+    pygame.display.init()
+    pygame.font.init()
+
+    window_width = 600
+    window_height = 300
+
+    screen = pygame.display.set_mode((window_width, window_height))
+    pygame.display.set_caption("Element Selection - Enter Hint")
+
+    font = pygame.font.Font(None, 36)
+    clock = pygame.time.Clock()
+
+    input_text = ""
+    result = None
+
+    running = True
+    pygame.display.flip()
+
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                result = "q"
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    result = input_text
+                    running = False
+                elif event.key == pygame.K_ESCAPE:
+                    result = "q"
+                    running = False
+                elif event.key == pygame.K_BACKSPACE:
+                    input_text = input_text[:-1]
+                elif len(input_text) < 10 and event.unicode.isalpha():
+                    input_text += event.unicode
+
+        screen.fill((40, 40, 40))
+
+        prompt_text = font.render("Enter hint:", True, (255, 255, 255))
+        input_display = font.render(input_text, True, (0, 255, 0))
+
+        help_text = font.render("ENTER to submit, ESC to quit", True, (150, 150, 150))
+
+        screen.blit(prompt_text, (20, 80))
+        screen.blit(input_display, (20, 120))
+        screen.blit(help_text, (20, 220))
+
+        pygame.display.flip()
+        clock.tick(30)
+
+    pygame.quit()
+    return result.lower() if result else "q"
+
+
 def run_element_selection_cli():
-    """Run element selection using CLI."""
+    """Run element selection using pygame window for input."""
     logger.info("Starting element selection mode")
 
     try:
@@ -90,7 +151,6 @@ def run_element_selection_cli():
         hints = get_hints(children)
 
         print(f"\nDetected {len(hints)} elements:")
-        print("\nType hint to select element, or 'q' to quit:")
         print("\nElements:")
         for i, (hint, child) in enumerate(list(hints.items())[:50]):
             x, y = child.absolute_position
@@ -100,7 +160,7 @@ def run_element_selection_cli():
             print(f"  ... and {len(hints) - 50} more")
 
         while True:
-            user_input = input("\nEnter hint: ").strip().lower()
+            user_input = get_input_via_pygame()
 
             if user_input == "q":
                 print("Quitting...")
