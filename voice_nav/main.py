@@ -60,15 +60,7 @@ def on_hotkey():
 
 def trigger_element_selection():
     """Trigger element selection (called from external modules)."""
-    import os
-    import sys
-
-    voice_nav_dir = os.path.dirname(__file__)
-    if voice_nav_dir not in sys.path:
-        sys.path.insert(0, voice_nav_dir)
-    from element_selector_cli import run_element_selection_cli
-
-    run_element_selection_cli()
+    print("Element selection disabled - screenshot functionality removed")
 
 
 def children_to_blocks(children: list[Child], hints: dict[str, Child]) -> list[Block]:

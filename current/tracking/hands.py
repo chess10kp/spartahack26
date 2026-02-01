@@ -45,8 +45,9 @@ from nose_tracker import NoseTracker
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "voice_nav"))
 from stt_elevenlabs import transcribe_from_mic, ElevenLabsSTTError
 from typing_control import type_text
-from element_selector import capture_screen
-from ai_client import query_openrouter_with_vision, OpenRouterError
+
+# from element_selector import capture_screen
+from ai_client import query_openrouter, OpenRouterError
 
 # =========================
 # CONFIG
@@ -106,7 +107,7 @@ pinch_active = False
 voice_recording = False
 voice_result = None
 voice_start_time = 0.0
-VOICE_RECORD_DURATION = 4.0  # matches DEFAULT_DURATION_SEC in stt_elevenlabs
+VOICE_RECORD_DURATION = 6.0  # matches DEFAULT_DURATION_SEC in stt_elevenlabs
 
 # Voice mode state
 voice_mode_active = False
@@ -114,6 +115,14 @@ voice_mode_active = False
 # Workspace gesture state
 last_workspace_switch_time = 0.0
 current_finger_count = 0
+
+# Blink + pinch to exit eye mode
+last_blink_time = 0.0
+BLINK_PINCH_WINDOW = 1.0
+
+# Click gesture state
+last_click_gesture_time = 0.0
+CLICK_DEBOUNCE = 0.3
 
 
 # =========================
@@ -158,7 +167,7 @@ def voice_record_thread():
 
 
 def start_voice_mode():
-    """Start voice mode: record speech and type directly or query AI with screenshot."""
+    """Start voice mode: record speech and type directly."""
     global voice_mode_active, voice_recording, voice_result, voice_start_time
 
     print("Starting voice mode (direct input)...")
@@ -198,37 +207,19 @@ def process_voice_result():
 
     lower = transcript.lower()
 
+    # Check if query contains "triad" - if so, send to AI
     if "ai" in lower:
-        query = _extract_ai_query(transcript)
-        if query:
-            print(f"Querying AI with screenshot: {query}")
-            try:
-                screenshot = capture_screen()
-                response = query_openrouter_with_vision(query, screenshot)
-                print(f"AI response: {response}")
-                type_text(response)
-            except OpenRouterError as e:
-                print(f"AI query failed: {e}")
-        else:
-            print("Heard 'AI' but no query provided")
+        print("Triad detected - querying AI...")
+        try:
+            response = query_openrouter(transcript)
+            print(f"AI response: {response}")
+            type_text(response)
+        except OpenRouterError as e:
+            print(f"AI query failed: {e}")
+            type_text(transcript)
     else:
         print(f"Typing: {transcript}")
         type_text(transcript)
-
-
-def _extract_ai_query(transcript: str) -> str:
-    """Extract AI query from transcript, removing AI-related prefixes."""
-    import re
-
-    text = transcript.strip()
-    patterns_to_remove = [
-        r"^ai\s*[:]*\s*",
-        r"^ask\s+ai\s*[:]*\s*",
-        r"^ask\s+the\s+ai\s*[:]*\s*",
-    ]
-    for pattern in patterns_to_remove:
-        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
-    return text.strip()
 
 
 # =========================
@@ -259,14 +250,14 @@ def move_mouse_cartesian(lm):
 
     gain = BASE_GAIN + (MAX_GAIN - BASE_GAIN) * min(mag * 4, 1.0)
 
-    pyautogui.moveRel(smoothed_dir[0] * gain, smoothed_dir[1] * gain)
+    pyautogui.moveRel(-smoothed_dir[0] * gain, smoothed_dir[1] * gain)
 
 
 # =========================
 # RIGHT HAND: PINCH CLICKS
 # =========================
 def handle_pinch_clicks(lm):
-    global last_pinch_time, pinch_active
+    global last_pinch_time, pinch_active, em, last_blink_time
 
     pinch_dist = dist(lm[4], lm[8])
     now = time.time()
@@ -274,8 +265,15 @@ def handle_pinch_clicks(lm):
     if pinch_dist < PINCH_THRESHOLD and not pinch_active:
         pinch_active = True
 
+        # Check if blink was detected recently to exit eye mode
+        if now - last_blink_time < BLINK_PINCH_WINDOW and em:
+            print("Blink + pinch detected - exiting eye mode")
+            em = False
+            last_blink_time = 0.0
+            return
+
         if now - last_pinch_time < DOUBLE_CLICK_WINDOW:
-            pyautogui.rightClick()
+            pyautogui.click()
             last_pinch_time = 0.0
         else:
             pyautogui.click()
@@ -300,6 +298,9 @@ def detect_right_gesture(lm):
     if index and middle and not ring and not pinky:
         if lm[12].x > lm[8].x:
             return "TWO"
+
+    if index and middle and ring and pinky:
+        return "CLICK"
 
     return None
 
@@ -352,6 +353,19 @@ def handle_workspace_switch(finger_count):
     last_workspace_switch_time = now
 
 
+def handle_click_gesture():
+    """Handle the index + pinky click gesture."""
+    global last_click_gesture_time
+
+    now = time.time()
+    if now - last_click_gesture_time < CLICK_DEBOUNCE:
+        return
+
+    print("CLICK gesture detected - triggering left click")
+    subprocess.run(["ydotool", "click", "0x0001"], check=False)
+    last_click_gesture_time = now
+
+
 # =========================
 # MAIN LOOP
 # =========================
@@ -368,7 +382,12 @@ def run_tracking(trigger_voice_mode=None):
         voice_recording, \
         voice_result, \
         voice_start_time
-    global voice_mode_active, current_hints, hints_overlay_img, current_finger_count
+    global \
+        voice_mode_active, \
+        current_hints, \
+        hints_overlay_img, \
+        current_finger_count, \
+        last_blink_time
 
     cap = cv2.VideoCapture(1)
     print("FINAL gesture pipeline running (ESC to quit)")
@@ -395,14 +414,16 @@ def run_tracking(trigger_voice_mode=None):
                 lm = hand_lm
                 label = handedness[0].category_name
                 confidence = handedness[0].score
-                
+
                 # Calculate hand center x position (0=left of frame, 1=right of frame)
                 hand_center_x = sum(p.x for p in lm) / len(lm)
-                
+
                 # Only trust handedness if confidence is high enough
                 # For workspace gestures, also verify hand is on correct side of frame
                 # With flipped camera: left hand (MediaPipe "Right") should be on RIGHT side of frame (x > 0.5)
-                is_left_hand = label == "Right" and (confidence > 0.8 or hand_center_x > 0.5)
+                is_left_hand = label == "Right" and (
+                    confidence > 0.8 or hand_center_x > 0.5
+                )
 
                 color = (0, 255, 0) if label == "Left" else (0, 0, 255)
 
@@ -452,6 +473,8 @@ def run_tracking(trigger_voice_mode=None):
                     current_gesture = detect_right_gesture(lm)
                     if current_gesture:
                         print(f"Detected gesture: {current_gesture}")
+                        if current_gesture == "CLICK":
+                            handle_click_gesture()
 
                 # Workspace switching uses LEFT HAND only
                 # Use is_left_hand which checks both label AND position/confidence
@@ -492,7 +515,7 @@ def run_tracking(trigger_voice_mode=None):
             nose_tracker.stop()
         prev_em = em
 
-        # Trigger voice mode when activated (screenshot + hints + recording)
+        # Trigger voice mode when activated (voice recording)
         if vm and not prev_vm and not voice_recording:
             start_voice_mode()
             vm = False  # Reset after starting
@@ -504,11 +527,12 @@ def run_tracking(trigger_voice_mode=None):
 
         # Process nose tracking if eye mode is active
         if em:
-            frame, double_blink = nose_tracker.process_frame(frame)
-            if double_blink:
-                # Double blink detected - click and exit eye mode
-                subprocess.run(["ydotool", "click", "0xC0"])
-                print("Double blink detected - clicked and exiting eye mode")
+            frame, blink_count = nose_tracker.process_frame(frame)
+            if blink_count >= 1:
+                last_blink_time = now
+                print(f"Blink {blink_count} detected - waiting for pinch")
+            if blink_count == 2:
+                print("Double blink - exiting eye mode")
                 em = False
                 nose_tracker.stop()
 
@@ -533,6 +557,18 @@ def run_tracking(trigger_voice_mode=None):
                 2,
             )
 
+        # Click gesture display
+        if current_gesture == "CLICK":
+            cv2.putText(
+                frame,
+                "CLICK (🤘)",
+                (10, 120),
+                FONT,
+                0.8,
+                (255, 0, 255),
+                2,
+            )
+
         for i, g in enumerate(["ONE", "TWO"]):
             if gesture_start[g]:
                 hold_time = HOLD_TIME if g == "ONE" else TWO_TRIGGER_TIME
@@ -540,7 +576,7 @@ def run_tracking(trigger_voice_mode=None):
                 cv2.putText(
                     frame,
                     f"{g} HOLD: {remaining:.2f}s",
-                    (10, 120 + i * 25),
+                    (10, 155 + i * 25),
                     FONT,
                     0.6,
                     (255, 255, 0),

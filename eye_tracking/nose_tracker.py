@@ -18,7 +18,7 @@ SCREEN_W, SCREEN_H = 2240, 1400
 MODEL_PATH = Path(__file__).parent / "face_landmarker.task"
 SMOOTH_FACTOR = 0.4  # Higher = more responsive
 DEADZONE = 1  # Lower = catches smaller movements
-SENSITIVITY = 5  # Multiplier for movement
+SENSITIVITY = 10  # Multiplier for movement
 CALIBRATION_FILE = Path(__file__).parent / "nose_calibration.json"
 
 NOSE_TIP = 1  # Nose tip landmark index
@@ -348,11 +348,14 @@ class NoseTracker:
         self.active = False
         print("Nose tracker stopped")
 
-    def detect_double_blink(self, landmarks):
-        """Detect double blink from face landmarks. Returns True if double blink detected."""
+    def detect_blinks(self, landmarks):
+        """Detect blinks from face landmarks.
+
+        Returns:
+            blink_count: 0=no blink, 1=single blink, 2=double blink
+        """
         now = time.time()
 
-        # Calculate EAR for both eyes
         left_ear = eye_aspect_ratio(landmarks, LEFT_EYE_IDX)
         right_ear = eye_aspect_ratio(landmarks, RIGHT_EYE_IDX)
         avg_ear = (left_ear + right_ear) / 2.0
@@ -362,30 +365,32 @@ class NoseTracker:
         if eyes_closed:
             self.blink_counter += 1
         else:
-            # Eyes just opened after being closed
             if self.blink_counter >= BLINK_CONSEC_FRAMES:
-                # Valid blink detected
                 self.blink_times.append(now)
-                # Keep only recent blinks
                 self.blink_times = [
                     t for t in self.blink_times if now - t < DOUBLE_BLINK_WINDOW
                 ]
 
                 if len(self.blink_times) >= 2:
-                    # Double blink detected!
                     self.blink_times = []
-                    return True
+                    self.blink_counter = 0
+                    return 2
+
+                if len(self.blink_times) == 1:
+                    self.blink_times = []
+                    self.blink_counter = 0
+                    return 1
 
             self.blink_counter = 0
 
-        return False
+        return 0
 
     def process_frame(self, frame):
-        """Process a frame and move mouse. Returns (frame, double_blink_detected)."""
+        """Process a frame and move mouse. Returns (frame, blink_count)."""
         if not self.active or self.landmarker is None:
-            return frame, False
+            return frame, 0
 
-        double_blink = False
+        blink_count = 0
         # NOTE: Do NOT flip frame here - caller already flips it
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -399,8 +404,7 @@ class NoseTracker:
             nose = landmarks[NOSE_TIP]
             nose_x, nose_y = nose.x, nose.y
 
-            # Check for double blink
-            double_blink = self.detect_double_blink(landmarks)
+            blink_count = self.detect_blinks(landmarks)
 
             # Smooth nose position
             if self.prev_nose_x is not None:
@@ -444,7 +448,7 @@ class NoseTracker:
                     2,
                 )
 
-        return frame, double_blink
+        return frame, blink_count
 
 
 if __name__ == "__main__":
