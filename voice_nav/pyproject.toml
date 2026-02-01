@@ -1,0 +1,18 @@
+[project]
+name = "voice-nav"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "Pillow",
+    "opencv-python",
+    "pynput",
+    "numpy",
+]
+
+# System dependencies that need to be installed via package manager:
+# - python-pycairo
+# - python-pygobject
+# - python-evdev
+# - python-dbus
