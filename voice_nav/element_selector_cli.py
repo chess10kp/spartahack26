@@ -81,63 +81,116 @@ def get_hints(children, alphabet: str = "asdfghjkl"):
     return hints
 
 
-def get_input_via_pygame():
-    """Open a small pygame window to get user input."""
+def display_hints_via_pygame(screenshot, hints):
+    """Display full-screen overlay with hints like GTK."""
     import os
+    import time
 
-    os.environ["SDL_VIDEO_WINDOW_POS"] = "100,100"
     pygame.init()
-
     pygame.display.init()
     pygame.font.init()
 
-    window_width = 600
-    window_height = 300
+    screen_width, screen_height = screenshot.size
 
-    screen = pygame.display.set_mode((window_width, window_height))
-    pygame.display.set_caption("Element Selection - Enter Hint")
+    screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN)
+    pygame.display.set_caption("Hints Overlay")
 
-    font = pygame.font.Font(None, 36)
+    font = pygame.font.SysFont("Arial", 24, bold=True)
     clock = pygame.time.Clock()
 
-    input_text = ""
+    background = pygame.image.frombytes(screenshot.tobytes(), screenshot.size, "RGB")
+
+    hint_state = ""
     result = None
+    hints_drawn = {}
+    last_key = ""
 
     running = True
-    pygame.display.flip()
+
+    logger.info(f"Displaying {len(hints)} hints. Press ESC to quit.")
+
+    time.sleep(0.2)
 
     while running:
+        screen.blit(background, (0, 0))
+
+        hint_bg_color = (0, 0, 0, 230)
+        hint_text_color = (255, 255, 0)
+        hint_height = 32
+        hint_width_padding = 12
+
+        for hint_value, child in hints.items():
+            if hint_value.startswith(hint_state):
+                x_loc, y_loc = child.absolute_position
+                hint_text = hint_value.upper()
+                text_surf = font.render(hint_text, True, hint_text_color)
+                text_rect = text_surf.get_rect()
+
+                hint_width = text_rect.width + hint_width_padding * 2
+                hint_x_offset = child.width / 2 - hint_width / 2
+                hint_y_offset = child.height / 2 - hint_height / 2
+
+                hint_x = int(x_loc + hint_x_offset)
+                hint_y = int(y_loc + hint_y_offset)
+
+                hint_surface = pygame.Surface(
+                    (hint_width, hint_height), pygame.SRCALPHA
+                )
+                hint_surface.fill(hint_bg_color)
+
+                text_x = (hint_width - text_rect.width) // 2
+                text_y = (hint_height - text_rect.height) // 2
+                hint_surface.blit(text_surf, (text_x, text_y))
+
+                screen.blit(hint_surface, (hint_x, hint_y))
+                hints_drawn[hint_value] = (hint_x, hint_y)
+
+        status_text = f"Typed: {last_key.upper()} | ESC to quit | Hints: {sum(1 for h in hints.keys() if h.startswith(hint_state))}"
+        status_surf = font.render(status_text, True, (255, 255, 255))
+
+        bg_status = pygame.Surface(
+            (status_surf.get_width() + 20, status_surf.get_height() + 10),
+            pygame.SRCALPHA,
+        )
+        bg_status.fill((0, 0, 0, 200))
+        screen.blit(bg_status, (20, 20))
+        screen.blit(status_surf, (30, 25))
+
+        pygame.display.flip()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 result = "q"
                 running = False
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_RETURN:
-                    result = input_text
-                    running = False
-                elif event.key == pygame.K_ESCAPE:
+                logger.info(f"Key pressed: {event.key} ({event.unicode})")
+                last_key = event.unicode
+
+                if event.key == pygame.K_ESCAPE:
                     result = "q"
                     running = False
-                elif event.key == pygame.K_BACKSPACE:
-                    input_text = input_text[:-1]
-                elif len(input_text) < 10 and event.unicode.isalpha():
-                    input_text += event.unicode
+                elif event.unicode.isalpha():
+                    next_char = event.unicode.lower()
+                    hint_state += next_char
 
-        screen.fill((40, 40, 40))
+                    updated_hints = {
+                        h: c for h, c in hints.items() if h.startswith(hint_state)
+                    }
 
-        prompt_text = font.render("Enter hint:", True, (255, 255, 255))
-        input_display = font.render(input_text, True, (0, 255, 0))
+                    logger.info(
+                        f"Hint state: {hint_state}, Remaining hints: {len(updated_hints)}"
+                    )
 
-        help_text = font.render("ENTER to submit, ESC to quit", True, (150, 150, 150))
+                    if len(updated_hints) == 1:
+                        result = hint_state
+                        running = False
+                    elif len(updated_hints) == 0:
+                        hint_state = hint_state[:-1]
 
-        screen.blit(prompt_text, (20, 80))
-        screen.blit(input_display, (20, 120))
-        screen.blit(help_text, (20, 220))
-
-        pygame.display.flip()
         clock.tick(30)
 
     pygame.quit()
+    logger.info(f"Result: {result}")
     return result.lower() if result else "q"
 
 
@@ -151,39 +204,28 @@ def run_element_selection_cli():
         hints = get_hints(children)
 
         print(f"\nDetected {len(hints)} elements:")
-        print("\nElements:")
-        for i, (hint, child) in enumerate(list(hints.items())[:50]):
+
+        user_input = display_hints_via_pygame(screenshot, hints)
+
+        if user_input == "q":
+            print("Quitting...")
+        elif user_input in hints:
+            child = hints[user_input]
             x, y = child.absolute_position
-            print(f"  {hint}: Position ({x}, {y}), Size {child.width}x{child.height}")
+            center_x = int(x + child.width / 2)
+            center_y = int(y + child.height / 2)
 
-        if len(hints) > 50:
-            print(f"  ... and {len(hints) - 50} more")
-
-        while True:
-            user_input = get_input_via_pygame()
-
-            if user_input == "q":
-                print("Quitting...")
-                break
-
-            if user_input in hints:
-                child = hints[user_input]
-                x, y = child.absolute_position
-                center_x = int(x + child.width / 2)
-                center_y = int(y + child.height / 2)
-
-                logger.info(f"Clicking at ({center_x}, {center_y})")
-                click(
-                    center_x,
-                    center_y,
-                    MouseButton.LEFT,
-                    (MouseButtonState.DOWN, MouseButtonState.UP),
-                    1,
-                )
-                print(f"Clicked at ({center_x}, {center_y})")
-                break
-            else:
-                print(f"Invalid hint. Try again.")
+            logger.info(f"Clicking at ({center_x}, {center_y})")
+            click(
+                center_x,
+                center_y,
+                MouseButton.LEFT,
+                (MouseButtonState.DOWN, MouseButtonState.UP),
+                1,
+            )
+            print(f"Clicked at ({center_x}, {center_y})")
+        else:
+            print(f"Invalid hint.")
 
     except Exception as e:
         logger.error(f"Element selection failed: {e}")
