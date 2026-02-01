@@ -1,8 +1,17 @@
 import cv2
-import mediapipe as mp
 import numpy as np
 import pyautogui
 import time
+import sys
+from pathlib import Path
+
+import mediapipe as mp
+from mediapipe.tasks.python import BaseOptions
+from mediapipe.tasks.python import vision
+
+# Add eye_tracking to path for nose tracker import
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "eye_tracking"))
+from nose_tracker import NoseTracker
 
 # =========================
 # CONFIG
@@ -14,7 +23,7 @@ LEFT_CLOSE_THRESHOLD = 0.045
 PINCH_THRESHOLD = 0.035
 DOUBLE_CLICK_WINDOW = 0.35
 
-HOLD_TIME = 3.0
+HOLD_TIME = 1.5  # Reduced for easier activation
 
 BASE_GAIN = 35
 MAX_GAIN = 120
@@ -24,17 +33,18 @@ DEADZONE = 0.005
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 # =========================
-# MEDIAPIPE
+# MEDIAPIPE HAND LANDMARKER (Tasks API)
 # =========================
-mp_hands = mp.solutions.hands
-mp_draw = mp.solutions.drawing_utils
+HAND_MODEL_PATH = Path(__file__).parent.parent.parent / "eye_tracking" / "hand_landmarker.task"
 
-hands = mp_hands.Hands(
-    static_image_mode=False,
-    max_num_hands=2,
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.7
+hand_options = vision.HandLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path=str(HAND_MODEL_PATH)),
+    running_mode=vision.RunningMode.VIDEO,
+    num_hands=2,
+    min_hand_detection_confidence=0.7,
+    min_tracking_confidence=0.7,
 )
+hand_landmarker = vision.HandLandmarker.create_from_options(hand_options)
 
 # =========================
 # STATE
@@ -43,8 +53,12 @@ smoothed_dir = np.array([0.0, 0.0])
 
 vm = False
 em = False
+prev_em = False  # Track previous state to detect changes
 
 gesture_start = {"ONE": None, "TWO": None}
+
+# Nose tracker instance
+nose_tracker = NoseTracker()
 
 last_pinch_time = 0.0
 pinch_active = False
@@ -154,44 +168,51 @@ while True:
     now = time.time()
 
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = hands.process(rgb)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+    
+    timestamp_ms = int(time.time() * 1000)
+    results = hand_landmarker.detect_for_video(mp_image, timestamp_ms)
 
     current_gesture = None
 
-    if results.multi_hand_landmarks and results.multi_handedness:
+    if results.hand_landmarks and results.handedness:
         for hand_lm, handedness in zip(
-            results.multi_hand_landmarks,
-            results.multi_handedness
+            results.hand_landmarks,
+            results.handedness
         ):
-            lm = hand_lm.landmark
-            label = handedness.classification[0].label
+            lm = hand_lm
+            label = handedness[0].category_name
 
             color = (0, 255, 0) if label == "Left" else (0, 0, 255)
 
-            mp_draw.draw_landmarks(
-                frame,
-                hand_lm,
-                mp_hands.HAND_CONNECTIONS,
-                mp_draw.DrawingSpec(color=color, thickness=2, circle_radius=3),
-                mp_draw.DrawingSpec(color=(200, 200, 200), thickness=2)
-            )
-
-            # Landmark indices
+            # Draw landmarks manually (no mp_draw in Tasks API)
             for i, p in enumerate(lm):
                 x, y = int(p.x * w), int(p.y * h)
+                cv2.circle(frame, (x, y), 3, color, -1)
                 cv2.putText(frame, str(i), (x + 4, y - 4),
                             FONT, 0.35, (255, 255, 0), 1)
+            
+            # Draw connections
+            connections = [
+                (0,1),(1,2),(2,3),(3,4),  # thumb
+                (0,5),(5,6),(6,7),(7,8),  # index
+                (0,9),(9,10),(10,11),(11,12),  # middle
+                (0,13),(13,14),(14,15),(15,16),  # ring
+                (0,17),(17,18),(18,19),(19,20),  # pinky
+                (5,9),(9,13),(13,17)  # palm
+            ]
+            for c1, c2 in connections:
+                p1 = (int(lm[c1].x * w), int(lm[c1].y * h))
+                p2 = (int(lm[c2].x * w), int(lm[c2].y * h))
+                cv2.line(frame, p1, p2, (200, 200, 200), 2)
 
-            # if label == "Left":
-            #     p1 = (int(lm[5].x * w), int(lm[5].y * h))
-            #     p2 = (int(lm[8].x * w), int(lm[8].y * h))
-            #     cv2.arrowedLine(frame, p1, p2, (255, 255, 255), 2)
-            #
-            #     move_mouse_cartesian(lm)
-
-            else:
+            # Note: With flipped camera, "Left" in MediaPipe = your right hand
+            # So we check for "Left" label to detect right hand gestures
+            if label == "Left":
                 handle_pinch_clicks(lm)
                 current_gesture = detect_right_gesture(lm)
+                if current_gesture:
+                    print(f"Detected gesture: {current_gesture}")
 
     # =========================
     # MODE STATE MACHINE
@@ -214,6 +235,17 @@ while True:
         if em:
             vm = False
         gesture_start["TWO"] = None
+
+    # Start/stop nose tracker when eye mode changes
+    if em and not prev_em:
+        nose_tracker.start()
+    elif not em and prev_em:
+        nose_tracker.stop()
+    prev_em = em
+
+    # Process nose tracking if eye mode is active
+    if em:
+        frame = nose_tracker.process_frame(frame)
 
     # =========================
     # UI OVERLAY
@@ -238,5 +270,6 @@ while True:
     if cv2.waitKey(1) & 0xFF == 27:
         break
 
+nose_tracker.stop()
 cap.release()
 cv2.destroyAllWindows()

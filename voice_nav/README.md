@@ -1,6 +1,6 @@
 # Voice Navigation - Element Selection
 
-A Python-based system for screenshot capture, element detection using CV, and interactive element selection.
+A Python-based system for screenshot capture, element detection using CV, and interactive element selection with voice control.
 
 ## Features
 
@@ -8,6 +8,8 @@ A Python-based system for screenshot capture, element detection using CV, and in
 - **Element Detection**: Uses OpenCV Canny edge detection and contour analysis to detect UI elements
 - **Hint-based Selection**: Assigns keyboard-friendly hints (asdfghjkl) to detected elements
 - **Automatic Clicking**: Clicks on selected elements using pynput
+- **Voice Control**: Uses ElevenLabs Speech-to-Text API for voice commands
+- **AI Command Planning**: Plans actions based on voice commands and detected elements
 
 ## Installation
 
@@ -18,6 +20,25 @@ A Python-based system for screenshot capture, element detection using CV, and in
    ```
 
 ## Usage
+
+### Voice Control with ElevenLabs
+
+1. Set your ElevenLabs API key:
+   ```bash
+   export ELEVENLABS_API_KEY=your_api_key_here
+   ```
+
+2. Run the voice navigation demo:
+   ```bash
+   python example_elevenlabs.py
+   ```
+
+3. Test the ElevenLabs integration:
+   ```bash
+   python test_elevenlabs_stt.py
+   ```
+
+For detailed documentation on ElevenLabs STT integration, see [ELEVENLABS_README.md](ELEVENLABS_README.md).
 
 ### CLI Mode (No system dependencies)
 
@@ -79,6 +100,15 @@ Click Execution (pynput)
 - `mouse.py` - Mouse control using pynput
 - `mouse_enums.py` - Mouse button and state enums
 - `main.py` - Main daemon with hotkey listener
+- `stt.py` - Whisper-based speech-to-text module
+- `stt_elevenlabs.py` - ElevenLabs STT integration module
+- `typing_control.py` - Keyboard typing helpers using pynput
+- `planner.py` - AI command planning for voice commands
+- `schemas.py` - Data models for commands and blocks
+- `example_elevenlabs.py` - Example usage of ElevenLabs STT
+- `test_elevenlabs_stt.py` - Tests for ElevenLabs integration
+- `test_voice_nav.py` - Voice navigation system tests
+- `ELEVENLABS_README.md` - Detailed documentation for ElevenLabs integration
 
 ## Configuration
 

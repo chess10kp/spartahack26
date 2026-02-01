@@ -12,11 +12,14 @@ from PIL import ImageGrab
 
 from schemas import Block, Command, ResolveResult
 from stt import transcribe_audio_file
+from stt_elevenlabs import transcribe_from_mic, ElevenLabsSTTError
 from planner import plan_command
-from element_selector import detect_elements, get_hints
+from element_selector import detect_elements, get_hints, run_element_selection
 from child import Child
 from mouse import click, move
 from mouse_enums import MouseButton, MouseButtonState
+from typing_control import type_text
+from pynput import keyboard
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +47,9 @@ def on_hotkey():
         run_element_selection()
     except ModuleNotFoundError as e:
         if "gi" in str(e):
-            logging.warning("PyGObject/GTK not available; falling back to pygame selector")
+            logging.warning(
+                "PyGObject/GTK not available; falling back to pygame selector"
+            )
             try:
                 from element_selector_cli import run_element_selection_cli
 
@@ -53,6 +58,8 @@ def on_hotkey():
                 logging.error(f"Fallback selector failed: {inner}")
         else:
             logging.error(f"Element selection failed: {e}")
+
+
 def children_to_blocks(children: list[Child], hints: dict[str, Child]) -> list[Block]:
     """Convert Child elements to Block format.
 
@@ -295,6 +302,8 @@ def start_hotkey_listener():
     listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     listener.start()
     return listener
+
+
 def main():
     """Main entry point."""
     logger.info("Voice Navigation System starting")
@@ -326,6 +335,7 @@ def main():
     except KeyboardInterrupt:
         print("\nShutting down...")
         listener.stop()
+
 
 async def run_demo():
     """Run a demo of the voice navigation system."""

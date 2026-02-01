@@ -239,5 +239,100 @@ def main():
     landmarker.close()
 
 
+class NoseTracker:
+    """Reusable nose tracker that can be started/stopped"""
+    
+    def __init__(self):
+        self.landmarker = None
+        self.calibration = NoseCalibration()
+        self.curr_x, self.curr_y = SCREEN_W // 2, SCREEN_H // 2
+        self.prev_nose_x, self.prev_nose_y = None, None
+        self.frame_id = 0
+        self.ui = None
+        self.active = False
+    
+    def start(self):
+        if self.active:
+            return
+        
+        options = vision.FaceLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(MODEL_PATH)),
+            running_mode=vision.RunningMode.VIDEO,
+            num_faces=1,
+        )
+        self.landmarker = vision.FaceLandmarker.create_from_options(options)
+        
+        cap_events = {e.EV_REL: [e.REL_X, e.REL_Y], e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT]}
+        self.ui = UInput(cap_events, name="nose-tracker-mouse")
+        
+        self.calibration.load(CALIBRATION_FILE)
+        self.frame_id = 0
+        self.prev_nose_x, self.prev_nose_y = None, None
+        self.active = True
+        print("Nose tracker started")
+    
+    def stop(self):
+        if not self.active:
+            return
+        
+        if self.landmarker:
+            self.landmarker.close()
+            self.landmarker = None
+        if self.ui:
+            self.ui.close()
+            self.ui = None
+        self.active = False
+        print("Nose tracker stopped")
+    
+    def process_frame(self, frame):
+        """Process a frame and move mouse. Returns frame with nose marker."""
+        if not self.active or self.landmarker is None:
+            return frame
+        
+        frame = cv2.flip(frame, 1)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        
+        timestamp_ms = int(self.frame_id * (1000 / 30))
+        result = self.landmarker.detect_for_video(mp_image, timestamp_ms)
+        self.frame_id += 1
+        
+        if result.face_landmarks:
+            nose = result.face_landmarks[0][NOSE_TIP]
+            nose_x, nose_y = nose.x, nose.y
+            
+            # Smooth nose position
+            if self.prev_nose_x is not None:
+                nose_x = self.prev_nose_x + SMOOTH_FACTOR * (nose_x - self.prev_nose_x)
+                nose_y = self.prev_nose_y + SMOOTH_FACTOR * (nose_y - self.prev_nose_y)
+            self.prev_nose_x, self.prev_nose_y = nose_x, nose_y
+            
+            # Convert to screen coordinates with sensitivity
+            target_x, target_y = self.calibration.predict(nose_x, nose_y)
+            target_x = SCREEN_W / 2 + (target_x - SCREEN_W / 2) * SENSITIVITY
+            target_y = SCREEN_H / 2 + (target_y - SCREEN_H / 2) * SENSITIVITY
+            target_x = max(0, min(SCREEN_W - 1, target_x))
+            target_y = max(0, min(SCREEN_H - 1, target_y))
+            
+            # Smooth cursor movement
+            new_x = self.curr_x + SMOOTH_FACTOR * (target_x - self.curr_x)
+            new_y = self.curr_y + SMOOTH_FACTOR * (target_y - self.curr_y)
+            
+            dx = int(new_x - self.curr_x)
+            dy = int(new_y - self.curr_y)
+            
+            if abs(dx) > DEADZONE or abs(dy) > DEADZONE:
+                self.ui.write(e.EV_REL, e.REL_X, dx)
+                self.ui.write(e.EV_REL, e.REL_Y, dy)
+                self.ui.syn()
+                self.curr_x, self.curr_y = new_x, new_y
+            
+            # Draw nose on frame
+            h, w, _ = frame.shape
+            cv2.circle(frame, (int(nose.x * w), int(nose.y * h)), 10, (0, 255, 0), -1)
+        
+        return frame
+
+
 if __name__ == "__main__":
     main()
