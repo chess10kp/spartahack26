@@ -4,6 +4,7 @@ import asyncio
 import io
 import logging
 import os
+import subprocess
 import sys
 import time
 
@@ -23,7 +24,8 @@ from child import Child
 from mouse import click, move
 from mouse_enums import MouseButton, MouseButtonState
 from typing_control import type_text
-from pynput import keyboard
+import evdev
+import select
 from ai_client import query_openrouter_with_vision, OpenRouterError
 
 logging.basicConfig(
@@ -141,21 +143,20 @@ async def execute_command(command: Command):
 
     elif command.action == "type":
         if command.text:
-            import pyautogui
-
-            pyautogui.typewrite(command.text)
+            type_text(command.text)
             logger.info(f"Typed: {command.text}")
 
     elif command.action == "scroll":
-        import pyautogui
-
         if command.scroll:
             direction = command.scroll.get("direction", "down")
             amount = command.scroll.get("amount", 500)
+            scroll_amount = amount // 100
             if direction == "down":
-                pyautogui.scroll(-amount)
+                for _ in range(scroll_amount):
+                    subprocess.run(["ydotool", "key", "108:1", "108:0"])
             else:
-                pyautogui.scroll(amount)
+                for _ in range(scroll_amount):
+                    subprocess.run(["ydotool", "key", "109:1", "109:0"])
             logger.info(f"Scrolled {direction} by {amount}")
 
     elif command.action == "noop":
@@ -344,30 +345,67 @@ def _extract_type_payload(transcript: str) -> str:
 
 def start_hotkey_listener():
     """Start global hotkey listeners for element selection and voice typing."""
+    import threading
+
     logging.debug("Setting up hotkeys: E (select) and Ctrl+Alt+V (voice type)")
 
+    def find_keyboard_device():
+        """Find the first keyboard event device."""
+        devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
+        for device in devices:
+            caps = device.capabilities()
+            if evdev.ecodes.EV_KEY in caps:
+                return device
+        return None
+
+    keyboard_device = find_keyboard_device()
+    if not keyboard_device:
+        logging.error("No keyboard device found")
+        return None
+
     pressed = set()
+    running = [True]
 
-    def on_press(key):
-        pressed.add(key)
+    def key_listener():
+        """Listen for key events."""
+        for event in keyboard_device.read_loop():
+            if not running[0]:
+                break
 
-        # Single-key trigger for selection
-        if isinstance(key, keyboard.KeyCode) and key.char == "e":
-            on_hotkey()
+            if event.type == evdev.ecodes.EV_KEY:
+                key_event = evdev.categorize(event)
+                keycode = key_event.keycode
 
-        # Chord trigger for voice typing
-        ctrl = keyboard.Key.ctrl_l in pressed or keyboard.Key.ctrl_r in pressed
-        alt = keyboard.Key.alt_l in pressed or keyboard.Key.alt_r in pressed
-        v_key = isinstance(key, keyboard.KeyCode) and key.char == "v"
-        if ctrl and alt and v_key:
-            on_voice_hotkey()
+                if event.value == 1:  # Key press
+                    pressed.add(keycode)
 
-    def on_release(key):
-        pressed.discard(key)
+                    # Single-key trigger for selection (E key)
+                    if keycode == "KEY_E":
+                        on_hotkey()
 
-    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-    listener.start()
-    return listener
+                    # Chord trigger for voice typing (Ctrl+Alt+V)
+                    ctrl_held = "KEY_LEFTCTRL" in pressed or "KEY_RIGHTCTRL" in pressed
+                    alt_held = "KEY_LEFTALT" in pressed or "KEY_RIGHTALT" in pressed
+                    if ctrl_held and alt_held and keycode == "KEY_V":
+                        on_voice_hotkey()
+
+                elif event.value == 0:  # Key release
+                    pressed.discard(keycode)
+
+    # Start listener in a separate thread
+    listener_thread = threading.Thread(target=key_listener, daemon=True)
+    listener_thread.start()
+
+    # Create a wrapper with stop method
+    class ListenerWrapper:
+        def __init__(self, thread):
+            self.thread = thread
+
+        def stop(self):
+            running[0] = False
+            keyboard_device.close()
+
+    return ListenerWrapper(listener_thread)
 
 
 def main():

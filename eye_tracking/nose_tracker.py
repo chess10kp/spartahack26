@@ -10,8 +10,8 @@ from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
 
 # ---------- Virtual Mouse Setup ----------
-cap_events = {e.EV_REL: [e.REL_X, e.REL_Y], e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT]}
-ui = UInput(cap_events, name="nose-tracker-mouse")
+# NOTE: UInput is now created lazily in NoseTracker.start() to avoid module-level side effects
+CAP_EVENTS = {e.EV_REL: [e.REL_X, e.REL_Y], e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT]}
 
 # ---------- Settings ----------
 SCREEN_W, SCREEN_H = 2240, 1400
@@ -152,20 +152,6 @@ def run_calibration(landmarker, cap, calibration):
         screen_x = int(px * SCREEN_W)
         screen_y = int(py * SCREEN_H)
 
-        calib_frame = np.zeros((SCREEN_H, SCREEN_W, 3), dtype=np.uint8)
-        cv2.circle(calib_frame, (screen_x, screen_y), 20, (0, 255, 0), -1)
-        cv2.circle(calib_frame, (screen_x, screen_y), 5, (255, 255, 255), -1)
-        cv2.putText(
-            calib_frame,
-            f"Point {i + 1}/9 - Point nose here, press SPACE",
-            (50, 50),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (255, 255, 255),
-            2,
-        )
-        cv2.imshow("Calibration", calib_frame)
-
         point_samples = []
         collecting = True
         frame_id = 0
@@ -193,7 +179,18 @@ def run_calibration(landmarker, cap, calibration):
                     frame, (int(nose.x * w), int(nose.y * h)), 10, (0, 255, 0), -1
                 )
 
-            cv2.imshow("Camera", frame)
+            # Draw calibration overlay on frame
+            h, w = frame.shape[:2]
+            cv2.rectangle(frame, (10, 10), (600, 80), (0, 0, 0), -1)
+            cv2.putText(
+                frame,
+                f"Point {i + 1}/9 - Point nose here, press SPACE",
+                (20, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 255),
+                2,
+            )
 
             key = cv2.waitKey(1) & 0xFF
             if key == 32:  # SPACE
@@ -204,10 +201,7 @@ def run_calibration(landmarker, cap, calibration):
                     print(f"Point {i + 1} captured: nose=({avg_x:.3f}, {avg_y:.3f})")
                     collecting = False
             elif key == 27:  # ESC
-                cv2.destroyWindow("Calibration")
                 return False
-
-    cv2.destroyWindow("Calibration")
 
     if calibration.fit():
         calibration.save(CALIBRATION_FILE)
@@ -223,6 +217,9 @@ def main():
         num_faces=1,
     )
     landmarker = vision.FaceLandmarker.create_from_options(options)
+
+    # Create UInput here for standalone mode
+    ui = UInput(CAP_EVENTS, name="nose-tracker-mouse")
 
     cap = cv2.VideoCapture(0)
     calibration = NoseCalibration()
@@ -286,8 +283,6 @@ def main():
             h, w, _ = frame.shape
             cv2.circle(frame, (int(nose.x * w), int(nose.y * h)), 10, (0, 255, 0), -1)
 
-        cv2.imshow("Nose Tracker", frame)
-
         key = cv2.waitKey(1) & 0xFF
         if key == 27:  # ESC
             break
@@ -329,8 +324,7 @@ class NoseTracker:
         )
         self.landmarker = vision.FaceLandmarker.create_from_options(options)
 
-        cap_events = {e.EV_REL: [e.REL_X, e.REL_Y], e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT]}
-        self.ui = UInput(cap_events, name="nose-tracker-mouse")
+        self.ui = UInput(CAP_EVENTS, name="nose-tracker-mouse")
 
         self.calibration.load(CALIBRATION_FILE)
         self.frame_id = 0
@@ -392,7 +386,7 @@ class NoseTracker:
             return frame, False
 
         double_blink = False
-        frame = cv2.flip(frame, 1)
+        # NOTE: Do NOT flip frame here - caller already flips it
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 

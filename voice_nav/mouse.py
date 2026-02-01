@@ -1,12 +1,12 @@
-"""Mouse functions using pynput."""
+"""Mouse functions using ydotool."""
 
 from __future__ import annotations
 
 from time import sleep
 from typing import TYPE_CHECKING
+import subprocess
 
 from mouse_enums import MouseButton, MouseButtonState
-from pynput import mouse
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -20,10 +20,11 @@ def move(x: int, y: int, absolute: bool = True):
     :param absolute: Whether position is absolute.
     """
     if absolute:
-        mouse.Controller().position = (x, y)
+        subprocess.run(["ydotool", "mousemove", "-x", str(x), "-y", str(y)])
     else:
-        current = mouse.Controller().position
-        mouse.Controller().position = (current[0] + x, current[1] + y)
+        subprocess.run(
+            ["ydotool", "mousemove", "--relative", "-x", str(x), "-y", str(y)]
+        )
 
 
 def click(
@@ -43,8 +44,6 @@ def click(
     :param repeat: Times to repeat click.
     :param absolute: Whether position is absolute.
     """
-    controller = mouse.Controller()
-
     for _ in range(repeat):
         move(x, y, absolute=absolute)
         sleep(0.05)
@@ -52,12 +51,12 @@ def click(
         for state in button_states:
             if state == MouseButtonState.DOWN:
                 if button == MouseButton.LEFT:
-                    controller.press(mouse.Button.left)
+                    subprocess.run(["ydotool", "click", "0x1"])
                 elif button == MouseButton.RIGHT:
-                    controller.press(mouse.Button.right)
+                    subprocess.run(["ydotool", "click", "0x3"])
             elif state == MouseButtonState.UP:
                 if button == MouseButton.LEFT:
-                    controller.release(mouse.Button.left)
+                    subprocess.run(["ydotool", "click", "0x1", "--up"])
                 elif button == MouseButton.RIGHT:
-                    controller.release(mouse.Button.right)
+                    subprocess.run(["ydotool", "click", "0x3", "--up"])
             sleep(0.05)

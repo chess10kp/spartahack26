@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 import pyautogui
 import time
@@ -8,7 +7,11 @@ import os
 import subprocess
 from pathlib import Path
 
+# Suppress Qt warnings and force xcb platform to avoid Wayland Qt issues
 os.environ["QT_LOGGING_RULES"] = "qt.qpa.font.debug=false;qt.qpa.*=false"
+os.environ["QT_QPA_PLATFORM"] = "xcb"  # Force X11/XWayland instead of native Wayland Qt
+
+import cv2
 
 
 class QtWarningFilter:
@@ -229,92 +232,6 @@ def _extract_ai_query(transcript: str) -> str:
 
 
 # =========================
-# APP LAUNCHER GESTURE
-# =========================
-def play_app_launcher_sound(start_recording=True):
-    try:
-        if start_recording:
-            subprocess.run(APP_LAUNCHER_AUDIO_START.split(), check=False, timeout=1)
-        else:
-            subprocess.run(APP_LAUNCHER_AUDIO_STOP.split(), check=False, timeout=1)
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-
-
-def app_launcher_record_thread():
-    global app_launcher_recording, app_launcher_voice_result
-    try:
-        print("[App Launcher] Starting transcription...")
-        transcript = transcribe_from_mic(duration_sec=APP_LAUNCHER_RECORD_DURATION)
-        app_launcher_voice_result = ("success", transcript)
-        print(f"[App Launcher] Transcription successful: {transcript}")
-    except ElevenLabsSTTError as e:
-        app_launcher_voice_result = ("error", str(e))
-        print(f"[App Launcher] ElevenLabs STT Error: {e}")
-    except Exception as e:
-        app_launcher_voice_result = ("error", str(e))
-        print(f"[App Launcher] Unexpected error: {e}")
-        import traceback
-
-        traceback.print_exc()
-    app_launcher_recording = False
-
-
-def start_app_launcher():
-    global \
-        app_launcher_active, \
-        app_launcher_recording, \
-        app_launcher_voice_result, \
-        app_launcher_voice_start_time
-    print("Starting app launcher... Speak app name!")
-    play_app_launcher_sound(start_recording=True)
-    app_launcher_recording = True
-    app_launcher_voice_result = None
-    app_launcher_voice_start_time = time.time()
-    app_launcher_active = True
-    thread = threading.Thread(target=app_launcher_record_thread, daemon=True)
-    thread.start()
-
-
-def execute_app_launcher_command(command):
-    import shutil
-
-    command = command.strip()
-    if not command:
-        print("No command detected")
-        return
-
-    print(f"Processing: {command}")
-    executable = shutil.which(command)
-    if executable:
-        print(f"Found executable: {executable}")
-        subprocess.Popen([command], start_new_session=True)
-    else:
-        url = f"https://duckduckgo.com/?q={command}"
-        print(f"Opening search: {url}")
-        subprocess.Popen(["xdg-open", url], start_new_session=True)
-    play_app_launcher_sound(start_recording=False)
-
-
-def process_app_launcher_result():
-    global app_launcher_voice_result, app_launcher_active
-    if app_launcher_voice_result is None:
-        return
-    status, data = app_launcher_voice_result
-    app_launcher_voice_result = None
-    app_launcher_active = False
-
-    if status == "error":
-        print(f"App launcher voice failed: {data}")
-        play_app_launcher_sound(start_recording=False)
-        return
-
-    transcript = data
-    print(f"App launcher heard: {transcript}")
-    execute_app_launcher_command(transcript)
-
-
-# =========================
 # LEFT HAND CURSOR CONTROL
 # =========================
 def move_mouse_cartesian(lm):
@@ -452,12 +369,6 @@ def run_tracking(trigger_voice_mode=None):
         voice_result, \
         voice_start_time
     global voice_mode_active, current_hints, hints_overlay_img, current_finger_count
-    global \
-        app_launcher_active, \
-        app_launcher_recording, \
-        app_launcher_voice_result, \
-        app_launcher_voice_start_time
-    global app_launcher_gesture_start, last_app_launcher_time
 
     cap = cv2.VideoCapture(1)
     print("FINAL gesture pipeline running (ESC to quit)")
@@ -483,6 +394,15 @@ def run_tracking(trigger_voice_mode=None):
             for hand_lm, handedness in zip(results.hand_landmarks, results.handedness):
                 lm = hand_lm
                 label = handedness[0].category_name
+                confidence = handedness[0].score
+                
+                # Calculate hand center x position (0=left of frame, 1=right of frame)
+                hand_center_x = sum(p.x for p in lm) / len(lm)
+                
+                # Only trust handedness if confidence is high enough
+                # For workspace gestures, also verify hand is on correct side of frame
+                # With flipped camera: left hand (MediaPipe "Right") should be on RIGHT side of frame (x > 0.5)
+                is_left_hand = label == "Right" and (confidence > 0.8 or hand_center_x > 0.5)
 
                 color = (0, 255, 0) if label == "Left" else (0, 0, 255)
 
@@ -533,31 +453,16 @@ def run_tracking(trigger_voice_mode=None):
                     if current_gesture:
                         print(f"Detected gesture: {current_gesture}")
 
-                # Workspace switching and app launcher use LEFT HAND only
-                # Note: With flipped camera, "Right" in MediaPipe = your left hand
-                if label == "Right":
+                # Workspace switching uses LEFT HAND only
+                # Use is_left_hand which checks both label AND position/confidence
+                if is_left_hand:
                     finger_count = count_fingers(lm)
                     if finger_count > 0:
                         handle_workspace_switch(finger_count)
                     current_finger_count = finger_count
-
-                    # App launcher gesture (thumbs up)
-                    if is_thumbs_up(lm):
-                        if app_launcher_gesture_start is None:
-                            app_launcher_gesture_start = now
-                        elif now - app_launcher_gesture_start >= APP_LAUNCHER_HOLD_TIME:
-                            if now - last_app_launcher_time >= APP_LAUNCHER_DEBOUNCE:
-                                if not app_launcher_recording:
-                                    start_app_launcher()
-                                    last_app_launcher_time = now
-                                app_launcher_gesture_start = None
-                    else:
-                        app_launcher_gesture_start = None
-
-                # Reset state when right hand (MediaPipe "Left") is detected
-                if label == "Left":
+                else:
+                    # Right hand or uncertain handedness - do NOT trigger workspace switch
                     current_finger_count = 0
-                    app_launcher_gesture_start = None
 
         # =========================
         # MODE STATE MACHINE
@@ -596,10 +501,6 @@ def run_tracking(trigger_voice_mode=None):
         # Check for completed voice transcription
         if voice_result is not None:
             process_voice_result()
-
-        # Check for completed app launcher voice transcription
-        if app_launcher_voice_result is not None:
-            process_app_launcher_result()
 
         # Process nose tracking if eye mode is active
         if em:
@@ -669,47 +570,6 @@ def run_tracking(trigger_voice_mode=None):
                 2,
             )
             cv2.putText(frame, "Speak now!", (50, 75), FONT, 0.6, (200, 200, 255), 1)
-
-        # App launcher recording overlay
-        if app_launcher_recording:
-            elapsed = now - app_launcher_voice_start_time
-            remaining = max(0, APP_LAUNCHER_RECORD_DURATION - elapsed)
-
-            # Semi-transparent blue overlay
-            overlay = frame.copy()
-            cv2.rectangle(overlay, (0, 0), (w, 80), (0, 0, 150), -1)
-            cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
-
-            # Recording indicator with pulsing dot
-            pulse = int(127 + 127 * np.sin(elapsed * 6))
-            cv2.circle(frame, (30, 40), 12, (0, 0, pulse + 128), -1)
-            cv2.putText(
-                frame,
-                f"APP LAUNCHER... {remaining:.1f}s",
-                (50, 50),
-                FONT,
-                1.0,
-                (255, 255, 255),
-                2,
-            )
-            cv2.putText(
-                frame, "Speak app name!", (50, 75), FONT, 0.6, (200, 200, 255), 1
-            )
-
-        # App launcher gesture hold progress
-        if app_launcher_gesture_start:
-            remaining = max(
-                0, APP_LAUNCHER_HOLD_TIME - (now - app_launcher_gesture_start)
-            )
-            cv2.putText(
-                frame,
-                f"APP LAUNCHER: {remaining:.2f}s",
-                (10, 145),
-                FONT,
-                0.6,
-                (255, 165, 0),
-                2,
-            )
 
         cv2.imshow("Gesture Control Pipeline", frame)
 

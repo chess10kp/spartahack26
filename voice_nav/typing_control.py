@@ -1,13 +1,9 @@
-"""Keyboard typing helpers using pynput."""
+"""Keyboard typing helpers using ydotool."""
 
-from time import sleep
-from pynput import keyboard
+import subprocess
 
 
 def type_text(text: str, delay: float = 0.01):
-    """Type the provided text via virtual keyboard."""
-    controller = keyboard.Controller()
-    for ch in text:
-        controller.press(ch)
-        controller.release(ch)
-        sleep(delay)
+    """Paste the text via Ctrl+V using ydotool and wl-copy."""
+    subprocess.run(["wl-copy"], input=text, text=True)
+    subprocess.run(["ydotool", "key", "29:1", "47:1", "47:0", "29:0"])

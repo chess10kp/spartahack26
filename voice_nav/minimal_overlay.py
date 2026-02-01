@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from gi import require_foreign, require_version
-from pynput import keyboard
 
 require_version("Gdk", "3.0")
 require_version("Gtk", "3.0")
