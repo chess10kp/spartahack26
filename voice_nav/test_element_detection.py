@@ -4,7 +4,10 @@ import logging
 from itertools import product
 from math import ceil, log
 
-import PIL.ImageGrab
+try:
+    import pyscreenshot as ImageGrab
+except ImportError:
+    import PIL.ImageGrab
 from cv2 import (
     CHAIN_APPROX_SIMPLE,
     COLOR_BGR2GRAY,
@@ -36,7 +39,10 @@ class Child:
 
 def capture_screen():
     """Capture full screen screenshot."""
-    return PIL.ImageGrab.grab()
+    try:
+        return ImageGrab.grab(backend="grim")
+    except Exception:
+        return PIL.ImageGrab.grab()
 
 
 def detect_elements(
@@ -82,7 +88,9 @@ def detect_elements(
             )
         )
 
-    children.sort(key=lambda c: (int(c.absolute_position[1]), int(c.absolute_position[0])))
+    children.sort(
+        key=lambda c: (int(c.absolute_position[1]), int(c.absolute_position[0]))
+    )
 
     if len(children) > max_elements:
         logging.debug(f"Capping elements from {len(children)} to {max_elements}")

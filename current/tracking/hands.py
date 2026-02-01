@@ -8,7 +8,27 @@ import os
 import subprocess
 from pathlib import Path
 
-os.environ["QT_LOGGING_RULES"] = "qt.qpa.font.debug=false"
+os.environ["QT_LOGGING_RULES"] = "qt.qpa.font.debug=false;qt.qpa.*=false"
+
+
+class QtWarningFilter:
+    def __init__(self):
+        self.original_stderr = (
+            sys.__stderr__ if hasattr(sys, "__stderr__") else sys.stderr
+        )
+
+    def write(self, text):
+        if "QFont::setPointSizeF" not in text and "qt.qpa" not in text.lower():
+            if self.original_stderr:
+                self.original_stderr.write(text)
+
+    def flush(self):
+        if self.original_stderr:
+            self.original_stderr.flush()
+
+
+if hasattr(sys, "__stderr__") and sys.__stderr__:
+    sys.stderr = QtWarningFilter()
 
 import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions
@@ -42,12 +62,6 @@ BASE_GAIN = 35
 MAX_GAIN = 120
 SMOOTHING_ALPHA = 0.3
 DEADZONE = 0.005
-
-APP_LAUNCHER_HOLD_TIME = 0.5
-APP_LAUNCHER_RECORD_DURATION = 2.0
-APP_LAUNCHER_DEBOUNCE = 1.0
-APP_LAUNCHER_AUDIO_START = "paplay /usr/share/sounds/freedesktop/stereo/bell.oga"
-APP_LAUNCHER_AUDIO_STOP = "paplay /usr/share/sounds/freedesktop/stereo/complete.oga"
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -98,14 +112,6 @@ voice_mode_active = False
 last_workspace_switch_time = 0.0
 current_finger_count = 0
 
-# App launcher gesture state
-app_launcher_active = False
-app_launcher_recording = False
-app_launcher_voice_result = None
-app_launcher_voice_start_time = 0.0
-app_launcher_gesture_start = None
-last_app_launcher_time = 0.0
-
 
 # =========================
 # HELPERS
@@ -126,52 +132,25 @@ def thumb_up(lm):
     return lm[4].y < lm[3].y
 
 
-def is_thumbs_up(lm):
-    if not thumb_up(lm):
-        return False
-    index_up = finger_up(lm, 5, 6, 8)
-    middle_down = not finger_up(lm, 9, 10, 12)
-    ring_down = not finger_up(lm, 13, 14, 16)
-    pinky_down = not finger_up(lm, 17, 18, 20)
-    return index_up and middle_down and ring_down and pinky_down
-
-
 # =========================
 # VOICE COMMAND HANDLER
 # =========================
 def voice_record_thread():
     """Background thread to record and transcribe voice."""
     global voice_recording, voice_result
-
-    whisper_available = False
     try:
-        from voice_nav.stt import transcribe_sync
-        from voice_nav.stt_elevenlabs import record_microphone
+        transcript = transcribe_from_mic()
+        voice_result = ("success", transcript)
+        print(f"[Voice Mode] Transcription successful: {transcript}")
+    except ElevenLabsSTTError as e:
+        voice_result = ("error", str(e))
+        print(f"[Voice Mode] ElevenLabs STT Error: {e}")
+    except Exception as e:
+        voice_result = ("error", str(e))
+        print(f"[Voice Mode] Unexpected error: {e}")
+        import traceback
 
-        whisper_available = True
-    except ImportError:
-        pass
-
-    if whisper_available:
-        try:
-            audio_path = record_microphone(duration_sec=VOICE_RECORD_DURATION)
-            transcript = transcribe_sync(audio_path)
-            try:
-                os.remove(audio_path)
-            except:
-                pass
-            voice_result = ("success", transcript)
-        except Exception:
-            pass
-
-    if voice_result is None:
-        try:
-            transcript = transcribe_from_mic(duration_sec=VOICE_RECORD_DURATION)
-            voice_result = ("success", transcript)
-        except ElevenLabsSTTError as e:
-            voice_result = ("error", str(e))
-        except Exception as e:
-            voice_result = ("error", str(e))
+        traceback.print_exc()
     voice_recording = False
 
 
@@ -264,35 +243,20 @@ def play_app_launcher_sound(start_recording=True):
 
 def app_launcher_record_thread():
     global app_launcher_recording, app_launcher_voice_result
-    whisper_available = False
     try:
-        from voice_nav.stt import transcribe_sync
-        from voice_nav.stt_elevenlabs import record_microphone
+        print("[App Launcher] Starting transcription...")
+        transcript = transcribe_from_mic(duration_sec=APP_LAUNCHER_RECORD_DURATION)
+        app_launcher_voice_result = ("success", transcript)
+        print(f"[App Launcher] Transcription successful: {transcript}")
+    except ElevenLabsSTTError as e:
+        app_launcher_voice_result = ("error", str(e))
+        print(f"[App Launcher] ElevenLabs STT Error: {e}")
+    except Exception as e:
+        app_launcher_voice_result = ("error", str(e))
+        print(f"[App Launcher] Unexpected error: {e}")
+        import traceback
 
-        whisper_available = True
-    except ImportError:
-        pass
-
-    if whisper_available:
-        try:
-            audio_path = record_microphone(duration_sec=APP_LAUNCHER_RECORD_DURATION)
-            transcript = transcribe_sync(audio_path)
-            try:
-                os.remove(audio_path)
-            except:
-                pass
-            app_launcher_voice_result = ("success", transcript)
-        except Exception:
-            pass
-
-    if app_launcher_voice_result is None:
-        try:
-            transcript = transcribe_from_mic(duration_sec=APP_LAUNCHER_RECORD_DURATION)
-            app_launcher_voice_result = ("success", transcript)
-        except ElevenLabsSTTError as e:
-            app_launcher_voice_result = ("error", str(e))
-        except Exception as e:
-            app_launcher_voice_result = ("error", str(e))
+        traceback.print_exc()
     app_launcher_recording = False
 
 

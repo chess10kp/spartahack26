@@ -8,7 +8,11 @@ import sys
 import time
 
 from PIL import Image
-from PIL import ImageGrab
+
+try:
+    import pyscreenshot as ImageGrab
+except ImportError:
+    from PIL import ImageGrab
 
 from schemas import Block, Command, ResolveResult
 from stt import transcribe_audio_file
@@ -35,7 +39,10 @@ def take_screenshot():
     os.makedirs("screenshots", exist_ok=True)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     filename = os.path.join("screenshots", f"screenshot_{timestamp}.png")
-    screenshot = ImageGrab.grab()
+    try:
+        screenshot = ImageGrab.grab(backend="grim")
+    except Exception:
+        screenshot = ImageGrab.grab()
     screenshot.save(filename)
     logger.info(f"Screenshot saved as {filename}")
     return filename, screenshot
@@ -45,6 +52,7 @@ def on_hotkey():
     """Hotkey handler to trigger element selection."""
     logging.info("Element selection hotkey pressed")
     from element_selector_cli import run_element_selection_cli
+
     run_element_selection_cli()
 
 
@@ -52,10 +60,12 @@ def trigger_element_selection():
     """Trigger element selection (called from external modules)."""
     import os
     import sys
+
     voice_nav_dir = os.path.dirname(__file__)
     if voice_nav_dir not in sys.path:
         sys.path.insert(0, voice_nav_dir)
     from element_selector_cli import run_element_selection_cli
+
     run_element_selection_cli()
 
 

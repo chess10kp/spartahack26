@@ -5,7 +5,10 @@ from itertools import product
 from math import ceil, log
 import pygame
 
-import PIL.ImageGrab
+try:
+    import pyscreenshot as ImageGrab
+except ImportError:
+    import PIL.ImageGrab
 from cv2 import (
     CHAIN_APPROX_SIMPLE,
     COLOR_BGR2GRAY,
@@ -27,7 +30,10 @@ logger = logging.getLogger(__name__)
 
 def capture_screen():
     """Capture full screen screenshot."""
-    return PIL.ImageGrab.grab()
+    try:
+        return ImageGrab.grab(backend="grim")
+    except Exception:
+        return PIL.ImageGrab.grab()
 
 
 def detect_elements(
@@ -92,7 +98,9 @@ def display_hints_via_pygame(screenshot, hints):
 
     screen_width, screen_height = screenshot.size
 
-    screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN | pygame.NOFRAME)
+    screen = pygame.display.set_mode(
+        (screen_width, screen_height), pygame.FULLSCREEN | pygame.NOFRAME
+    )
     pygame.display.set_caption("HintsOverlay")
 
     font = pygame.font.SysFont("Arial", 24, bold=True)
