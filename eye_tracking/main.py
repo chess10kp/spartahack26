@@ -14,8 +14,8 @@ ui = UInput(cap_events, name="eye-tracker-mouse")
 # ---------- Settings ----------
 SCREEN_W, SCREEN_H = 2240, 1400
 MODEL_PATH = "face_landmarker.task"
-SENSITIVITY_X = 25.0
-SENSITIVITY_Y = 40.0
+SENSITIVITY_X = 60.0
+SENSITIVITY_Y = 100.0
 SMOOTH_FACTOR = 0.15
 DEADZONE = 5
 
