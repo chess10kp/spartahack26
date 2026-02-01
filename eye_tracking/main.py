@@ -14,7 +14,8 @@ ui = UInput(cap_events, name="eye-tracker-mouse")
 # ---------- Settings ----------
 SCREEN_W, SCREEN_H = 2240, 1400
 MODEL_PATH = "face_landmarker.task"
-SENSITIVITY = 25.0
+SENSITIVITY_X = 25.0
+SENSITIVITY_Y = 40.0
 SMOOTH_FACTOR = 0.15
 DEADZONE = 5
 
@@ -59,10 +60,10 @@ while cap.isOpened():
             calibrated_vector = rel_vec
 
         target_x = int(
-            SCREEN_W * (0.5 + (rel_vec[0] - calibrated_vector[0]) * SENSITIVITY)
+            SCREEN_W * (0.5 + (rel_vec[0] - calibrated_vector[0]) * SENSITIVITY_X)
         )
         target_y = int(
-            SCREEN_H * (0.5 + (rel_vec[1] - calibrated_vector[1]) * SENSITIVITY)
+            SCREEN_H * (0.5 + (rel_vec[1] - calibrated_vector[1]) * SENSITIVITY_Y)
         )
 
         new_x = curr_x + SMOOTH_FACTOR * (target_x - curr_x)
