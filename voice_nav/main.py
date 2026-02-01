@@ -88,8 +88,6 @@ def start_hotkey_listener():
     listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     listener.start()
     return listener
-
-
 def main():
     """Main entry point."""
     logging.basicConfig(
