@@ -13,6 +13,11 @@ from mediapipe.tasks.python import vision
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "eye_tracking"))
 from nose_tracker import NoseTracker
 
+# Add voice_nav to path for voice control
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "voice_nav"))
+from stt_elevenlabs import transcribe_from_mic, ElevenLabsSTTError
+from typing_control import type_text
+
 # =========================
 # CONFIG
 # =========================
@@ -23,7 +28,7 @@ LEFT_CLOSE_THRESHOLD = 0.045
 PINCH_THRESHOLD = 0.035
 DOUBLE_CLICK_WINDOW = 0.35
 
-HOLD_TIME = 1.5  # Reduced for easier activation
+HOLD_TIME = 0.5  # Reduced for easier activation
 
 BASE_GAIN = 35
 MAX_GAIN = 120
@@ -54,6 +59,7 @@ smoothed_dir = np.array([0.0, 0.0])
 vm = False
 em = False
 prev_em = False  # Track previous state to detect changes
+prev_vm = False  # Track previous voice mode state
 
 gesture_start = {"ONE": None, "TWO": None}
 
@@ -74,6 +80,30 @@ def finger_up(lm, mcp, pip, tip):
 
 def left_hand_closed(lm):
     return dist(lm[5], lm[8]) < LEFT_CLOSE_THRESHOLD
+
+# =========================
+# VOICE COMMAND HANDLER
+# =========================
+def handle_voice_command():
+    """Record from mic and process voice command."""
+    print("Recording voice command...")
+    try:
+        transcript = transcribe_from_mic()
+        print(f"Heard: {transcript}")
+        
+        lower = transcript.lower().strip()
+        if lower.startswith("type "):
+            payload = transcript[5:]
+            print(f"Typing: {payload}")
+            type_text(payload)
+        elif lower == "type":
+            print("Heard bare 'type' with no content; ignoring")
+        else:
+            print(f"Voice command: {transcript}")
+    except ElevenLabsSTTError as e:
+        print(f"STT error: {e}")
+    except Exception as e:
+        print(f"Voice command failed: {e}")
 
 # =========================
 # LEFT HAND CURSOR CONTROL
@@ -242,6 +272,12 @@ while True:
     elif not em and prev_em:
         nose_tracker.stop()
     prev_em = em
+
+    # Trigger voice command when voice mode is activated
+    if vm and not prev_vm:
+        handle_voice_command()
+        vm = False  # Reset after handling
+    prev_vm = vm
 
     # Process nose tracking if eye mode is active
     if em:

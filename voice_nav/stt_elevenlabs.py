@@ -8,16 +8,23 @@ import soundfile as sf
 
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_DURATION_SEC = 4
-DEFAULT_MODEL_ID = "eleven_multilingual_v2"
+DEFAULT_MODEL_ID = "scribe_v2"
 
 
 class ElevenLabsSTTError(Exception):
     pass
 
 
-def record_microphone(duration_sec: float = DEFAULT_DURATION_SEC, sample_rate: int = DEFAULT_SAMPLE_RATE) -> str:
+def record_microphone(
+    duration_sec: float = DEFAULT_DURATION_SEC, sample_rate: int = DEFAULT_SAMPLE_RATE
+) -> str:
     """Record audio from the default microphone and return a temp wav file path."""
-    audio = sd.rec(int(duration_sec * sample_rate), samplerate=sample_rate, channels=1, dtype="float32")
+    audio = sd.rec(
+        int(duration_sec * sample_rate),
+        samplerate=sample_rate,
+        channels=1,
+        dtype="float32",
+    )
     sd.wait()
     fd, path = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
@@ -25,7 +32,9 @@ def record_microphone(duration_sec: float = DEFAULT_DURATION_SEC, sample_rate: i
     return path
 
 
-def transcribe_file(path: str, api_key: Optional[str] = None, model_id: str = DEFAULT_MODEL_ID) -> str:
+def transcribe_file(
+    path: str, api_key: Optional[str] = None, model_id: str = DEFAULT_MODEL_ID
+) -> str:
     """Send an audio file to ElevenLabs STT and return the transcript text."""
     key = api_key or os.getenv("ELEVENLABS_API_KEY")
     if not key:
@@ -46,7 +55,11 @@ def transcribe_file(path: str, api_key: Optional[str] = None, model_id: str = DE
     return (out.get("text") or "").strip()
 
 
-def transcribe_from_mic(duration_sec: float = DEFAULT_DURATION_SEC, sample_rate: int = DEFAULT_SAMPLE_RATE, api_key: Optional[str] = None) -> str:
+def transcribe_from_mic(
+    duration_sec: float = DEFAULT_DURATION_SEC,
+    sample_rate: int = DEFAULT_SAMPLE_RATE,
+    api_key: Optional[str] = None,
+) -> str:
     """Convenience: record from mic then transcribe."""
     path = record_microphone(duration_sec=duration_sec, sample_rate=sample_rate)
     try:

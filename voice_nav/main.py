@@ -20,6 +20,7 @@ from mouse import click, move
 from mouse_enums import MouseButton, MouseButtonState
 from typing_control import type_text
 from pynput import keyboard
+from ai_client import query_openrouter, OpenRouterError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -254,7 +255,7 @@ async def resolve_screenshot_only(screenshot_path: str | None = None) -> Resolve
 
 
 def on_voice_hotkey():
-    """Hotkey handler to capture speech and type it if prefixed with 'type'."""
+    """Hotkey handler to capture speech and type it or query AI."""
     logging.info("Voice hotkey pressed; recording...")
     try:
         transcript = transcribe_from_mic()
@@ -262,18 +263,74 @@ def on_voice_hotkey():
         print(f"Heard: {transcript}")
 
         lower = transcript.lower().strip()
-        if lower.startswith("type "):
-            payload = transcript[5:]
-            logging.info(f"Typing: {payload}")
-            type_text(payload)
-        elif lower == "type":
-            logging.info("Heard bare 'type' with no content; ignoring")
+
+        if "ai" in lower:
+            query = _extract_ai_query(transcript)
+            if query:
+                logging.info(f"Querying AI with: {query}")
+                try:
+                    response = query_openrouter(query)
+                    logging.info(f"AI response: {response}")
+                    print(f"AI: {response}")
+                    type_text(response)
+                except OpenRouterError as e:
+                    logging.error(f"AI query failed: {e}")
+                    print(f"Error: {e}")
+            else:
+                logging.info("Heard 'AI' but no query provided")
         else:
-            logging.info("Transcript not a type command; ignoring")
+            payload = _extract_type_payload(transcript)
+            if payload:
+                logging.info(f"Typing: {payload}")
+                type_text(payload)
+            else:
+                logging.info("No content to type")
     except ElevenLabsSTTError as e:
         logging.error(f"STT error: {e}")
     except Exception as e:
         logging.error(f"Voice hotkey failed: {e}")
+
+
+def _extract_ai_query(transcript: str) -> str:
+    """Extract AI query from transcript, removing AI-related prefixes.
+
+    Args:
+        transcript: User's spoken command
+
+    Returns:
+        Clean query string
+    """
+    text = transcript.strip()
+
+    patterns_to_remove = [
+        r"^ai\s*[:]*\s*",
+        r"^ask\s+ai\s*[:]*\s*",
+        r"^ask\s+the\s+ai\s*[:]*\s*",
+    ]
+
+    import re
+
+    for pattern in patterns_to_remove:
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+
+    return text.strip()
+
+
+def _extract_type_payload(transcript: str) -> str:
+    """Extract text to type from transcript, removing 'type' prefix if present.
+
+    Args:
+        transcript: User's spoken command
+
+    Returns:
+        Text to type
+    """
+    text = transcript.strip()
+
+    if text.lower().startswith("type "):
+        return text[5:].strip()
+
+    return text
 
 
 def start_hotkey_listener():
@@ -323,7 +380,9 @@ def main():
     logging.info("Voice Navigation System starting")
     print("Voice Navigation System Started")
     print("Press E to enter element selection mode")
-    print("Press Ctrl+Alt+V then say 'type <text>' to type text via ElevenLabs STT")
+    print("Press Ctrl+Alt+V then:")
+    print("  - Say '<text>' to type text directly")
+    print("  - Say 'AI <query>' to query OpenRouter AI and type the response")
     print("Press Ctrl+C to exit")
 
     listener = start_hotkey_listener()
