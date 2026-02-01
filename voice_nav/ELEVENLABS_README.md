@@ -10,21 +10,28 @@ This guide explains how to use ElevenLabs Speech-to-Text (STT) API for voice nav
 ## Setup
 
 1. Set your ElevenLabs API key as an environment variable:
-   ```bash
-   export ELEVENLABS_API_KEY=your_api_key_here
-   ```
+    ```bash
+    export ELEVENLABS_API_KEY=your_api_key_here
+    ```
 
-2. Install dependencies (if not already installed):
-   ```bash
-   cd voice_nav
-   pip install -e .
-   ```
+2. (Optional) Set your OpenRouter API key for AI queries:
+    ```bash
+    export OPENROUTER_API_KEY=your_openrouter_key_here
+    ```
+   Get your API key from https://openrouter.ai/keys
+
+3. Install dependencies (if not already installed):
+    ```bash
+    cd voice_nav
+    pip install -e .
+    ```
 
 ## Features
 
 - Microphone recording using `sounddevice` and `soundfile`
 - Transcription using ElevenLabs STT API
 - Voice command integration with UI element detection
+- AI querying via OpenRouter for intelligent responses
 - Hotkey support for hands-free operation
 
 ## Usage

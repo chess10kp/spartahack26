@@ -10,6 +10,7 @@ A Python-based system for screenshot capture, element detection using CV, and in
 - **Automatic Clicking**: Clicks on selected elements using pynput
 - **Voice Control**: Uses ElevenLabs Speech-to-Text API for voice commands
 - **AI Command Planning**: Plans actions based on voice commands and detected elements
+- **AI Query**: Query OpenRouter AI for intelligent responses via voice commands
 
 ## Installation
 
@@ -24,9 +25,14 @@ A Python-based system for screenshot capture, element detection using CV, and in
 ### Voice Control with ElevenLabs
 
 1. Set your ElevenLabs API key:
-   ```bash
-   export ELEVENLABS_API_KEY=your_api_key_here
-   ```
+    ```bash
+    export ELEVENLABS_API_KEY=your_api_key_here
+    ```
+
+2. (Optional) Set your OpenRouter API key for AI queries:
+    ```bash
+    export OPENROUTER_API_KEY=your_openrouter_key_here
+    ```
 
 2. Run the voice navigation demo:
    ```bash
@@ -53,6 +59,25 @@ This will:
 3. Display a list of hints
 4. Prompt you to enter a hint
 5. Click on the selected element
+
+### Voice Commands
+
+Use voice to type text or query AI:
+
+1. Set up API keys (ElevenLabs required, OpenRouter optional for AI)
+2. Run the voice navigation system:
+   ```bash
+   .venv/bin/python main.py
+   ```
+3. Press `Ctrl+Alt+V` and speak:
+   - "hello world" → Types "hello world" at cursor
+   - "AI what is Python?" → Queries OpenRouter AI and types the response
+   - "type hello" → Types "hello" (legacy format)
+
+**AI Query Examples:**
+- "AI explain quantum physics"
+- "AI what's the capital of France"
+- "ask AI how to write a for loop in Python"
 
 ### GUI Mode (Requires system packages)
 
@@ -102,6 +127,7 @@ Click Execution (pynput)
 - `main.py` - Main daemon with hotkey listener
 - `stt.py` - Whisper-based speech-to-text module
 - `stt_elevenlabs.py` - ElevenLabs STT integration module
+- `ai_client.py` - OpenRouter AI client for intelligent responses
 - `typing_control.py` - Keyboard typing helpers using pynput
 - `planner.py` - AI command planning for voice commands
 - `schemas.py` - Data models for commands and blocks
