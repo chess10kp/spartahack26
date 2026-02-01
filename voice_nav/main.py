@@ -2,7 +2,6 @@ import PIL.ImageGrab
 import datetime
 import os
 import logging
-from pynput import keyboard
 
 from element_selector import run_element_selection
 
@@ -19,30 +18,10 @@ def take_screenshot():
     return filename
 
 
-def on_hotkey():
-    """Hotkey handler to trigger element selection."""
-    logging.info("Element selection hotkey pressed")
+def trigger_element_selection():
+    """Trigger element selection overlay."""
+    logging.info("Element selection triggered")
     run_element_selection()
-
-
-def start_hotkey_listener():
-    """Start global hotkey listener for element selection."""
-    logging.debug("Setting up hotkey listener for E")
-    hotkey = keyboard.HotKey(keyboard.HotKey.parse("<e>"), on_hotkey)
-
-    def on_press(k):
-        if k is not None:
-            logging.debug(f"Key pressed: {k}")
-            hotkey.press(k)
-
-    def on_release(k):
-        if k is not None:
-            logging.debug(f"Key released: {k}")
-            hotkey.release(k)
-
-    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-    listener.start()
-    return listener
 
 
 def main():
@@ -54,18 +33,6 @@ def main():
 
     logging.info("Voice Navigation System starting")
     print("Voice Navigation System Started")
-    print("Press E to enter element selection mode")
-    print("Press Ctrl+C to exit")
-
-    listener = start_hotkey_listener()
-    logging.debug("Hotkey listener started")
-
-    try:
-        while True:
-            pass
-    except KeyboardInterrupt:
-        print("\nShutting down...")
-        listener.stop()
 
 
 if __name__ == "__main__":
