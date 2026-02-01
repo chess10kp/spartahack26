@@ -1,9 +1,47 @@
 import cv2
 import numpy as np
-from pynput.mouse import Controller
+import platform
+import subprocess
 import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
+
+# ---------- OS Detection & Mouse Control ----------
+use_ydotool = (
+    platform.system() == "Linux"
+    and subprocess.run(["which", "ydotool"], capture_output=True).returncode == 0
+)
+use_pynput = platform.system() == "Linux" and not use_ydotool
+
+if use_ydotool:
+    print("Using ydotool for mouse control")
+    SCREEN_W, SCREEN_H = 2240, 1400  # Default, will be detected
+elif use_pynput:
+    print("Using pynput for mouse control")
+    from pynput.mouse import Controller
+
+    mouse = Controller()
+    SCREEN_W = mouse._display.screen().width_in_pixels
+    SCREEN_H = mouse._display.screen().height_in_pixels
+else:
+    print("Using pyautogui for mouse control")
+    import pyautogui
+
+    mouse = pyautogui
+    SCREEN_W, SCREEN_H = pyautogui.size()
+    pyautogui.FAILSAFE = False
+
+
+def move_mouse(x, y):
+    if use_ydotool:
+        subprocess.run(["ydotool", "mousemove", str(x), str(y)], capture_output=True)
+        print(f"Moved to ({x}, {y}) using ydotool")
+    elif use_pynput:
+        mouse.position = (x, y)
+        print(f"Moved to ({x}, {y}), position: {mouse.position}")
+    else:
+        pyautogui.moveTo(x, y)
+
 
 # ---------- Settings ----------
 MODEL_PATH = "face_landmarker.task"  # downloaded file
@@ -11,9 +49,6 @@ SMOOTHING = 0.25  # 0.10–0.25
 SCALE_X = 1.35  # sensitivity
 SCALE_Y = 1.35
 DEADZONE = 5  # pixels to ignore jitter
-mouse = Controller()
-SCREEN_W = mouse._display.screen().width_in_pixels
-SCREEN_H = mouse._display.screen().height_in_pixels
 
 # Iris landmark indices in FaceLandmarker output (same numbering as FaceMesh)
 RIGHT_IRIS = [469, 470, 471, 472]
@@ -88,6 +123,10 @@ while True:
         target_x = int(SCREEN_W / 2 + dx * SCREEN_W)
         target_y = int(SCREEN_H / 2 + dy * SCREEN_H)
 
+        print(
+            f"Iris: ({ix:.3f}, {iy:.3f}), Delta: ({dx:.3f}, {dy:.3f}), Target: ({target_x}, {target_y})"
+        )
+
         # clamp
         target_x = max(0, min(SCREEN_W - 1, target_x))
         target_y = max(0, min(SCREEN_H - 1, target_y))
@@ -98,8 +137,8 @@ while True:
 
         # deadzone (ignore tiny jitter)
         if abs(curr_x - prev_x) + abs(curr_y - prev_y) > DEADZONE:
-            print(f"Moving to ({curr_x}, {curr_y})")
-            mouse.position = (curr_x, curr_y)
+            print(f"Target: ({curr_x}, {curr_y}), Prev: ({prev_x}, {prev_y})")
+            move_mouse(curr_x, curr_y)
             prev_x, prev_y = curr_x, curr_y
 
         # debug dot on camera view
