@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 
 DEFAULT_ENV_PATHS = [
+    Path(__file__).resolve().parents[1] / ".env",
     Path(__file__).resolve().parent / ".env",
 ]
 
