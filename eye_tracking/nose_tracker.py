@@ -18,7 +18,7 @@ SCREEN_W, SCREEN_H = 2240, 1400
 MODEL_PATH = Path(__file__).parent / "face_landmarker.task"
 SMOOTH_FACTOR = 0.4  # Higher = more responsive
 DEADZONE = 1  # Lower = catches smaller movements
-SENSITIVITY = 2.5  # Multiplier for movement
+SENSITIVITY = 5   # Multiplier for movement
 CALIBRATION_FILE = Path(__file__).parent / "nose_calibration.json"
 
 NOSE_TIP = 1  # Nose tip landmark index
@@ -199,8 +199,11 @@ def main():
                 nose_y = prev_nose_y + SMOOTH_FACTOR * (nose_y - prev_nose_y)
             prev_nose_x, prev_nose_y = nose_x, nose_y
             
-            # Convert to screen coordinates
+            # Convert to screen coordinates with sensitivity boost
             target_x, target_y = calibration.predict(nose_x, nose_y)
+            # Apply sensitivity around screen center
+            target_x = SCREEN_W / 2 + (target_x - SCREEN_W / 2) * SENSITIVITY
+            target_y = SCREEN_H / 2 + (target_y - SCREEN_H / 2) * SENSITIVITY
             target_x = max(0, min(SCREEN_W - 1, target_x))
             target_y = max(0, min(SCREEN_H - 1, target_y))
             
