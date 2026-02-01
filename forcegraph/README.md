@@ -1,71 +1,110 @@
-# forcegraph README
+# Code Quest
 
-This is the README for your extension "forcegraph". After writing up a brief description, we recommend including the following sections.
+Gamified code challenges powered by AI to make exploring your codebase fun and engaging!
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+- **AI-Generated Challenges**: OpenAI GPT-4 generates context-aware challenges tailored to your codebase
+- **Navigation Tasks**: Find specific functions, classes, or code patterns
+- **Modification Tasks**: Make targeted code changes to improve or refactor
+- **Rich Gamification**:
+  - Points system with streak multipliers
+  - Level progression with unlockable difficulty tiers
+  - Celebration animations on success
+  - Hint system with strategic trade-offs
+- **Auto-Advance**: Challenges automatically progress as you complete them
+- **Real-time Verification**: Automatically detects when you've completed a challenge
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- Visual Studio Code 1.108.1 or higher
+- OpenAI API key (set as environment variable `OPENAI_API_KEY`)
+
+## Setup
+
+1. Install the extension from the VS Code Marketplace
+2. Set your OpenAI API key:
+   ```bash
+   export OPENAI_API_KEY=your_api_key_here
+   ```
+3. Reload VS Code
+4. Open a workspace with code
+5. Click the "Code Quest" icon in the activity bar
+6. Click "Start Challenge" to begin!
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+- `forcegraph.openaiApiKey`: OpenAI API key for generating challenges (set via environment variable `OPENAI_API_KEY`)
+- `forcegraph.autoAdvance`: Automatically advance to next challenge after completion (default: `true`)
+- `forcegraph.startDifficulty`: Starting difficulty level - `easy`, `medium`, or `hard` (default: `medium`)
 
-For example:
+## How It Works
 
-This extension contributes the following settings:
+1. Click "Start Challenge" in the sidebar
+2. AI analyzes your workspace and generates a challenge
+3. Navigate to the target location or make the required code change
+4. The extension automatically detects when you've completed the challenge
+5. Earn points, build your streak, and level up!
+6. Challenges auto-advance to keep you engaged
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+## Point System
+
+- **Correct Answer**: +100 points (+2x for streak of 3+)
+- **Use Hint**: -10 points (2 hints available per challenge)
+- **Skip Challenge**: -25 points
+- **Level Up**: Every 500 points
+
+## Challenge Types
+
+### Navigation Challenges
+Find specific elements in your codebase:
+- Functions with certain behavior
+- Classes with specific properties
+- Code patterns or anti-patterns
+- Exported symbols
+
+### Modification Challenges
+Make targeted changes:
+- Add error handling
+- Refactor code
+- Fix bugs
+- Improve performance
+
+## Keyboard Shortcuts
+
+Open the Command Palette (Ctrl/Cmd + Shift + P) and use:
+- `forcegraph.startChallenge`: Start a new challenge
+- `forcegraph.submitAnswer`: Submit your answer
+- `forcegraph.showHint`: Get a hint (-10 points)
+- `forcegraph.skipChallenge`: Skip to next challenge (-25 points)
+- `forcegraph.resetGame`: Reset your game progress
+
+## File Exclusions
+
+The extension automatically ignores:
+- `node_modules`, `dist`, `out`, `build`
+- Test files (`*.test.*`, `*.spec.*`)
+- Git directory (`.git`)
+- VS Code settings (`.vscode`)
+- Coverage reports, type definitions, and other generated files
 
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+- First challenge generation may take a few seconds as the workspace is analyzed
+- Modification challenges require manual submission if auto-detection fails
+- Ensure your OpenAI API key has sufficient credits
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
+### 0.0.1
 
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+Initial release of Code Quest:
+- AI-generated navigation and modification challenges
+- Gamified point system with streaks and levels
+- Rich interactive UI with celebrations
+- Hint system and challenge skipping
+- Auto-advance between challenges
 
 ---
 
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+**Enjoy your code adventure!** 🎯🚀

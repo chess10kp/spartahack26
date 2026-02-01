@@ -1,7 +1,7 @@
 {
   "name": "forcegraph",
-  "displayName": "forcegraph",
-  "description": "",
+  "displayName": "Code Quest",
+  "description": "Gamified code challenges with AI-generated tasks",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.108.1"
@@ -18,7 +18,7 @@
       "activitybar": [
         {
           "id": "forcegraph-container",
-          "title": "Force Graph",
+          "title": "Code Quest",
           "icon": "resources/forcegraph.svg"
         }
       ]
@@ -28,21 +28,54 @@
         {
           "type": "webview",
           "id": "forcegraph-sidebar",
-          "name": "Force Graph",
+          "name": "Challenges",
           "main": "out/extension.js"
         }
       ]
     },
     "commands": [
       {
-        "command": "forcegraph.helloWorld",
-        "title": "Hello World"
+        "command": "forcegraph.startChallenge",
+        "title": "Start Challenge"
       },
       {
-        "command": "forcegraph.randomFile",
-        "title": "Pick Random File"
+        "command": "forcegraph.submitAnswer",
+        "title": "Submit Answer"
+      },
+      {
+        "command": "forcegraph.showHint",
+        "title": "Show Hint"
+      },
+      {
+        "command": "forcegraph.skipChallenge",
+        "title": "Skip Challenge"
+      },
+      {
+        "command": "forcegraph.resetGame",
+        "title": "Reset Game"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Code Quest",
+      "properties": {
+        "forcegraph.openaiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI API key for generating challenges (set via environment variable OPENAI_API_KEY)"
+        },
+        "forcegraph.autoAdvance": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically advance to next challenge after completion"
+        },
+        "forcegraph.startDifficulty": {
+          "type": "string",
+          "enum": ["easy", "medium", "hard"],
+          "default": "medium",
+          "description": "Starting difficulty level"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -53,13 +86,17 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.108.1",
+    "@types/diff": "^7.0.2",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "typescript-eslint": "^8.52.0",
+    "@types/vscode": "^1.108.1",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.39.2",
     "typescript": "^5.9.3",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "typescript-eslint": "^8.52.0"
+  },
+  "dependencies": {
+    "diff": "^8.0.3"
   }
 }
