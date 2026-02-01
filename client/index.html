@@ -9,5 +9,14 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if (window.__TAURI__) {
+        import('@tauri-apps/api').then(({ getCurrent }) => {
+          // Tauri is available
+        }).catch(() => {
+          // Fallback for non-Tauri environment
+        });
+      }
+    </script>
   </body>
 </html>
