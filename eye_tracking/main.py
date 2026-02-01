@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import platform
 import subprocess
+import random
 import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
@@ -34,11 +35,11 @@ else:
 
 def move_mouse(x, y):
     if use_ydotool:
-        subprocess.run(["ydotool", "mousemove", str(x), str(y)], capture_output=True)
-        print(f"Moved to ({x}, {y}) using ydotool")
+        subprocess.run(
+            ["ydotool", "mousemove", "-a", str(x), str(y)], capture_output=True
+        )
     elif use_pynput:
         mouse.position = (x, y)
-        print(f"Moved to ({x}, {y}), position: {mouse.position}")
     else:
         pyautogui.moveTo(x, y)
 
@@ -46,9 +47,9 @@ def move_mouse(x, y):
 # ---------- Settings ----------
 MODEL_PATH = "face_landmarker.task"  # downloaded file
 SMOOTHING = 0.25  # 0.10–0.25
-SCALE_X = 1.35  # sensitivity
-SCALE_Y = 1.35
-DEADZONE = 5  # pixels to ignore jitter
+SCALE_X = 2.0  # sensitivity
+SCALE_Y = 2.0
+DEADZONE = 1  # pixels to ignore jitter
 
 # Iris landmark indices in FaceLandmarker output (same numbering as FaceMesh)
 RIGHT_IRIS = [469, 470, 471, 472]
@@ -66,6 +67,7 @@ landmarker = vision.FaceLandmarker.create_from_options(options)
 
 # ---------- State ----------
 prev_x, prev_y = SCREEN_W // 2, SCREEN_H // 2
+prev_ix, prev_iy = 0.5, 0.5
 calibrated = False
 base_ix, base_iy = 0.5, 0.5
 calib_samples = []
@@ -123,35 +125,18 @@ while True:
         target_x = int(SCREEN_W / 2 + dx * SCREEN_W)
         target_y = int(SCREEN_H / 2 + dy * SCREEN_H)
 
-        print(
-            f"Iris: ({ix:.3f}, {iy:.3f}), Delta: ({dx:.3f}, {dy:.3f}), Target: ({target_x}, {target_y})"
-        )
-
         # clamp
         target_x = max(0, min(SCREEN_W - 1, target_x))
         target_y = max(0, min(SCREEN_H - 1, target_y))
 
-        # smoothing
-        curr_x = int(prev_x + (target_x - prev_x) * SMOOTHING)
-        curr_y = int(prev_y + (target_y - prev_y) * SMOOTHING)
-
-        # deadzone (ignore tiny jitter)
-        if abs(curr_x - prev_x) + abs(curr_y - prev_y) > DEADZONE:
-            print(f"Target: ({curr_x}, {curr_y}), Prev: ({prev_x}, {prev_y})")
-            move_mouse(curr_x, curr_y)
-            prev_x, prev_y = curr_x, curr_y
-
-        # debug dot on camera view
-        cv2.circle(frame, (int(ix * w), int(iy * h)), 5, (0, 255, 0), -1)
-        cv2.putText(
-            frame,
-            "Tracking" if calibrated else "Calibrating...",
-            (20, 40),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.9,
-            (0, 255, 0) if calibrated else (0, 255, 255),
-            2,
-        )
+        # only move if iris position has changed significantly (0.005 threshold)
+        iris_delta = abs(ix - prev_ix) + abs(iy - prev_iy)
+        if iris_delta > 0.005:
+            print(
+                f"Iris moved by {iris_delta:.4f}, moving mouse to ({target_x}, {target_y})"
+            )
+            move_mouse(target_x, target_y)
+            prev_ix, prev_iy = ix, iy
     else:
         cv2.putText(
             frame,
