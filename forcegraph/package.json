@@ -1,0 +1,65 @@
+{
+  "name": "forcegraph",
+  "displayName": "forcegraph",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.108.1"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "forcegraph-container",
+          "title": "Force Graph",
+          "icon": "resources/forcegraph.svg"
+        }
+      ]
+    },
+    "views": {
+      "forcegraph-container": [
+        {
+          "type": "webview",
+          "id": "forcegraph-sidebar",
+          "name": "Force Graph",
+          "main": "out/extension.js"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "forcegraph.helloWorld",
+        "title": "Hello World"
+      },
+      {
+        "command": "forcegraph.randomFile",
+        "title": "Pick Random File"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.108.1",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.52.0",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
