@@ -43,14 +43,16 @@ def detect_elements(
     canny_min_val: int = 50,
     canny_max_val: int = 150,
     kernel_size: int = 3,
+    min_width: int = 20,
+    min_height: int = 20,
+    max_width: int = 900,
+    max_height: int = 900,
+    max_aspect_ratio: float = 6.0,
+    max_elements: int = 150,
 ) -> list[Child]:
-    """Detect UI elements using OpenCV edge detection.
+    """Detect UI elements using OpenCV edge detection with simple filters.
 
-    :param image: Screenshot image to process.
-    :param canny_min_val: Minimum threshold for Canny edge detection.
-    :param canny_max_val: Maximum threshold for Canny edge detection.
-    :param kernel_size: Size of dilation kernel.
-    :return: List of detected Child elements.
+    Filters trim obvious noise to keep hint lists reasonable; tweak thresholds per UI.
     """
     children: list[Child] = []
 
@@ -66,20 +68,30 @@ def detect_elements(
     for contour in contours:
         x, y, w, h = boundingRect(contour)
 
-        if w > 10 and h > 10:
-            children.append(
-                Child(
-                    absolute_position=(x, y),
-                    relative_position=(x, y),
-                    width=w,
-                    height=h,
-                )
+        if w < min_width or h < min_height or w > max_width or h > max_height:
+            continue
+
+        aspect = max(w, h) / max(1, min(w, h))
+        if aspect > max_aspect_ratio:
+            continue
+
+        children.append(
+            Child(
+                absolute_position=(x, y),
+                relative_position=(x, y),
+                width=w,
+                height=h,
             )
+        )
 
-    logger.debug(f"Detected {len(children)} elements")
+    # Stable ordering keeps hint assignment deterministic.
+    children.sort(key=lambda c: (int(c.absolute_position[1]), int(c.absolute_position[0])))
 
-    if not children:
-        raise RuntimeError("No elements detected in screenshot")
+    if len(children) > max_elements:
+        logger.debug(f"Capping elements from {len(children)} to {max_elements}")
+        children = children[:max_elements]
+
+    logger.debug(f"Detected {len(children)} elements after filtering")
 
     return children
 
@@ -128,6 +140,9 @@ def run_element_selection():
     try:
         screenshot = capture_screen()
         children = detect_elements(screenshot)
+        if not children:
+            logger.warning("No elements detected; aborting selection")
+            return
         hints = get_hints(children)
 
         from gi import require_version

@@ -44,6 +44,12 @@ def detect_elements(
     canny_min_val: int = 50,
     canny_max_val: int = 150,
     kernel_size: int = 3,
+    min_width: int = 20,
+    min_height: int = 20,
+    max_width: int = 900,
+    max_height: int = 900,
+    max_aspect_ratio: float = 6.0,
+    max_elements: int = 150,
 ):
     """Detect UI elements using OpenCV edge detection."""
     children = []
@@ -60,17 +66,29 @@ def detect_elements(
     for contour in contours:
         x, y, w, h = boundingRect(contour)
 
-        if w > 10 and h > 10:
-            children.append(
-                Child(
-                    absolute_position=(x, y),
-                    relative_position=(x, y),
-                    width=w,
-                    height=h,
-                )
-            )
+        if w < min_width or h < min_height or w > max_width or h > max_height:
+            continue
 
-    logging.info(f"Detected {len(children)} elements")
+        aspect = max(w, h) / max(1, min(w, h))
+        if aspect > max_aspect_ratio:
+            continue
+
+        children.append(
+            Child(
+                absolute_position=(x, y),
+                relative_position=(x, y),
+                width=w,
+                height=h,
+            )
+        )
+
+    children.sort(key=lambda c: (int(c.absolute_position[1]), int(c.absolute_position[0])))
+
+    if len(children) > max_elements:
+        logging.debug(f"Capping elements from {len(children)} to {max_elements}")
+        children = children[:max_elements]
+
+    logging.info(f"Detected {len(children)} elements after filtering")
 
     return children
 
