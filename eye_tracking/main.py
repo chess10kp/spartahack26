@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-import pyautogui
+from pynput.mouse import Controller
 import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
@@ -11,9 +11,9 @@ SMOOTHING = 0.25  # 0.10–0.25
 SCALE_X = 1.35  # sensitivity
 SCALE_Y = 1.35
 DEADZONE = 5  # pixels to ignore jitter
-SCREEN_W, SCREEN_H = pyautogui.size()
-
-pyautogui.FAILSAFE = False
+mouse = Controller()
+SCREEN_W = mouse._display.screen().width_in_pixels
+SCREEN_H = mouse._display.screen().height_in_pixels
 
 # Iris landmark indices in FaceLandmarker output (same numbering as FaceMesh)
 RIGHT_IRIS = [469, 470, 471, 472]
@@ -99,7 +99,7 @@ while True:
         # deadzone (ignore tiny jitter)
         if abs(curr_x - prev_x) + abs(curr_y - prev_y) > DEADZONE:
             print(f"Moving to ({curr_x}, {curr_y})")
-            pyautogui.moveTo(curr_x, curr_y)
+            mouse.position = (curr_x, curr_y)
             prev_x, prev_y = curr_x, curr_y
 
         # debug dot on camera view
