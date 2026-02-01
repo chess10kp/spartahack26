@@ -22,9 +22,8 @@ from nose_tracker import NoseTracker
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "voice_nav"))
 from stt_elevenlabs import transcribe_from_mic, ElevenLabsSTTError
 from typing_control import type_text
-from element_selector import capture_screen, detect_elements, get_hints
-from child import Child
-from ai_client import query_openrouter, OpenRouterError
+from element_selector import capture_screen
+from ai_client import query_openrouter_with_vision, OpenRouterError
 
 # =========================
 # CONFIG
@@ -43,6 +42,12 @@ BASE_GAIN = 35
 MAX_GAIN = 120
 SMOOTHING_ALPHA = 0.3
 DEADZONE = 0.005
+
+APP_LAUNCHER_HOLD_TIME = 0.5
+APP_LAUNCHER_RECORD_DURATION = 2.0
+APP_LAUNCHER_DEBOUNCE = 1.0
+APP_LAUNCHER_AUDIO_START = "paplay /usr/share/sounds/freedesktop/stereo/bell.oga"
+APP_LAUNCHER_AUDIO_STOP = "paplay /usr/share/sounds/freedesktop/stereo/complete.oga"
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -86,13 +91,20 @@ voice_result = None
 voice_start_time = 0.0
 VOICE_RECORD_DURATION = 4.0  # matches DEFAULT_DURATION_SEC in stt_elevenlabs
 
-# Voice mode with hints state
+# Voice mode state
 voice_mode_active = False
-current_hints = {}  # hint -> Child mapping
 
 # Workspace gesture state
 last_workspace_switch_time = 0.0
 current_finger_count = 0
+
+# App launcher gesture state
+app_launcher_active = False
+app_launcher_recording = False
+app_launcher_voice_result = None
+app_launcher_voice_start_time = 0.0
+app_launcher_gesture_start = None
+last_app_launcher_time = 0.0
 
 
 # =========================
@@ -110,264 +122,79 @@ def left_hand_closed(lm):
     return dist(lm[5], lm[8]) < LEFT_CLOSE_THRESHOLD
 
 
+def thumb_up(lm):
+    return lm[4].y < lm[3].y
+
+
+def is_thumbs_up(lm):
+    if not thumb_up(lm):
+        return False
+    index_up = finger_up(lm, 5, 6, 8)
+    middle_down = not finger_up(lm, 9, 10, 12)
+    ring_down = not finger_up(lm, 13, 14, 16)
+    pinky_down = not finger_up(lm, 17, 18, 20)
+    return index_up and middle_down and ring_down and pinky_down
+
+
 # =========================
 # VOICE COMMAND HANDLER
 # =========================
 def voice_record_thread():
     """Background thread to record and transcribe voice."""
     global voice_recording, voice_result
+
+    whisper_available = False
     try:
-        transcript = transcribe_from_mic()
-        voice_result = ("success", transcript)
-    except ElevenLabsSTTError as e:
-        voice_result = ("error", str(e))
-    except Exception as e:
-        voice_result = ("error", str(e))
+        from voice_nav.stt import transcribe_sync
+        from voice_nav.stt_elevenlabs import record_microphone
+
+        whisper_available = True
+    except ImportError:
+        pass
+
+    if whisper_available:
+        try:
+            audio_path = record_microphone(duration_sec=VOICE_RECORD_DURATION)
+            transcript = transcribe_sync(audio_path)
+            try:
+                os.remove(audio_path)
+            except:
+                pass
+            voice_result = ("success", transcript)
+        except Exception:
+            pass
+
+    if voice_result is None:
+        try:
+            transcript = transcribe_from_mic(duration_sec=VOICE_RECORD_DURATION)
+            voice_result = ("success", transcript)
+        except ElevenLabsSTTError as e:
+            voice_result = ("error", str(e))
+        except Exception as e:
+            voice_result = ("error", str(e))
     voice_recording = False
 
 
 def start_voice_mode():
-    """Start voice mode: capture screen, detect elements, show overlay, record."""
-    global \
-        voice_mode_active, \
-        current_hints, \
-        voice_recording, \
-        voice_result, \
-        voice_start_time
+    """Start voice mode: record speech and type directly or query AI with screenshot."""
+    global voice_mode_active, voice_recording, voice_result, voice_start_time
 
-    print("Starting voice mode...")
+    print("Starting voice mode (direct input)...")
 
-    # Capture screenshot and detect elements
-    screenshot = capture_screen()
-    children = detect_elements(screenshot)
-
-    if not children:
-        print("No UI elements detected")
-        return
-
-    current_hints = get_hints(children)
-    print(f"Detected {len(current_hints)} elements with hints")
-
-    # Start voice recording in background
     voice_recording = True
     voice_result = None
     voice_start_time = time.time()
     voice_mode_active = True
 
-    # Create overlay image BEFORE starting threads (so hints are captured)
-    global hints_overlay_img
-    hints_overlay_img = create_hints_overlay_image()
-
-    # Start recording thread
     thread = threading.Thread(target=voice_record_thread, daemon=True)
     thread.start()
 
-    # Show overlay - runs inline, blocks until recording done
-    show_hints_overlay()
-
-    print("Recording voice command... Speak: <hint> <action>")
-
-
-def create_hints_overlay_image():
-    """Create a screenshot with hints overlaid, returns the image."""
-    global current_hints
-
-    from PIL import ImageGrab
-
-    screenshot = ImageGrab.grab()
-
-    # Convert to OpenCV format
-    img = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-
-    print(
-        f"[DEBUG] Drawing {len(current_hints)} hints on overlay (img size: {img.shape})"
-    )
-
-    # Draw hints on the image
-    for hint_text, child in current_hints.items():
-        x = int(child.absolute_position[0] + child.width / 2)
-        y = int(child.absolute_position[1] + child.height / 2)
-
-        print(f"[DEBUG]   Hint '{hint_text}' at ({x}, {y})")
-
-        text = hint_text.upper()
-        (text_w, text_h), baseline = cv2.getTextSize(text, FONT, 1.2, 2)
-
-        padding = 10
-        # Black border
-        cv2.rectangle(
-            img,
-            (x - text_w // 2 - padding - 2, y - text_h // 2 - padding - 2),
-            (x + text_w // 2 + padding + 2, y + text_h // 2 + padding + 2),
-            (0, 0, 0),
-            -1,
-        )
-        # Red background
-        cv2.rectangle(
-            img,
-            (x - text_w // 2 - padding, y - text_h // 2 - padding),
-            (x + text_w // 2 + padding, y + text_h // 2 + padding),
-            (0, 0, 220),
-            -1,
-        )
-
-        cv2.putText(
-            img, text, (x - text_w // 2, y + text_h // 2), FONT, 1.2, (255, 255, 255), 2
-        )
-
-    return img
-
-
-# Global for overlay
-hints_overlay_img = None
-hints_window_name = "Voice Mode - Speak: <hint> <action>"
-
-
-def show_hints_overlay():
-    """Show fullscreen overlay with hints using OpenCV."""
-    global hints_overlay_img, voice_recording
-
-    # hints_overlay_img is already created in start_voice_mode()
-
-    # Create fullscreen window
-    cv2.namedWindow(hints_window_name, cv2.WINDOW_NORMAL)
-    cv2.setWindowProperty(
-        hints_window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN
-    )
-
-    # Show overlay while recording
-    while voice_recording:
-        # Add recording indicator
-        display_img = hints_overlay_img.copy()
-        h, w = display_img.shape[:2]
-
-        elapsed = time.time() - voice_start_time
-        remaining = max(0, VOICE_RECORD_DURATION - elapsed)
-
-        # Recording banner at top
-        cv2.rectangle(display_img, (0, 0), (w, 60), (0, 0, 150), -1)
-        pulse = int(127 + 127 * np.sin(elapsed * 6))
-        cv2.circle(display_img, (40, 30), 15, (0, 0, pulse + 128), -1)
-        cv2.putText(
-            display_img,
-            f"RECORDING... {remaining:.1f}s  |  Speak: <hint> <action>",
-            (70, 40),
-            FONT,
-            1.0,
-            (255, 255, 255),
-            2,
-        )
-
-        cv2.imshow(hints_window_name, display_img)
-        if cv2.waitKey(30) & 0xFF == 27:  # ESC to cancel
-            break
-
-    cv2.destroyWindow(hints_window_name)
-    hints_overlay_img = None
-
-
-def parse_hint_and_action(transcript: str) -> tuple:
-    """Parse transcript to extract hint and action.
-
-    Returns: (hint, action, extra_text)
-    """
-    words = transcript.lower().strip().split()
-
-    if not words:
-        return None, None, None
-
-    hint = words[0] if words else None
-    action = None
-    extra_text = None
-
-    if len(words) >= 2:
-        rest = " ".join(words[1:])
-
-        if rest.startswith("click") or rest == "click":
-            action = "click"
-        elif rest.startswith("double click"):
-            action = "double_click"
-        elif rest.startswith("right click"):
-            action = "right_click"
-        elif rest.startswith("type "):
-            action = "type"
-            extra_text = rest[5:]
-        else:
-            action = "query"
-            extra_text = rest
-    elif len(words) == 1:
-        action = "click"
-
-    return hint, action, extra_text
-
-
-def execute_voice_command(hint: str, action: str, extra_text: str):
-    """Execute the parsed voice command."""
-    global current_hints
-
-    if hint not in current_hints:
-        print(f"Hint '{hint}' not found in detected elements")
-        return
-
-    child = current_hints[hint]
-    center_x = int(child.absolute_position[0] + child.width / 2)
-    center_y = int(child.absolute_position[1] + child.height / 2)
-
-    print(f"Executing: {action} on hint '{hint}' at ({center_x}, {center_y})")
-
-    if action == "click":
-        subprocess.run(
-            ["ydotool", "mousemove", str(center_x), str(center_y)], check=False
-        )
-        subprocess.run(["ydotool", "click", "0xC0"], check=False)
-    elif action == "double_click":
-        subprocess.run(
-            ["ydotool", "mousemove", str(center_x), str(center_y)], check=False
-        )
-        subprocess.run(["ydotool", "click", "0xC0"], check=False)
-        time.sleep(0.1)
-        subprocess.run(["ydotool", "click", "0xC0"], check=False)
-    elif action == "right_click":
-        subprocess.run(
-            ["ydotool", "mousemove", str(center_x), str(center_y)], check=False
-        )
-        subprocess.run(["ydotool", "click", "0xC1"], check=False)
-    elif action == "type":
-        subprocess.run(
-            ["ydotool", "mousemove", str(center_x), str(center_y)], check=False
-        )
-        subprocess.run(["ydotool", "click", "0xC0"], check=False)
-        time.sleep(0.1)
-        type_text(extra_text)
-    elif action == "query":
-        subprocess.run(
-            ["ydotool", "mousemove", str(center_x), str(center_y)], check=False
-        )
-        subprocess.run(["ydotool", "click", "0xC0"], check=False)
-        time.sleep(0.1)
-        response = query_ai(extra_text)
-        if response:
-            type_text(response)
-
-
-def query_ai(prompt: str) -> str:
-    """Query AI for a response to type."""
-    import os
-
-    try:
-        response = query_openrouter(prompt)
-        return response
-    except OpenRouterError as e:
-        print(f"OpenRouter error: {e}, echoing prompt")
-        return prompt
-    except Exception as e:
-        print(f"AI query failed: {e}, echoing prompt")
-        return prompt
+    print("Recording... speak now")
 
 
 def process_voice_result():
-    """Process completed voice transcription."""
-    global voice_result, voice_mode_active, current_hints
+    """Process completed voice transcription: type directly or query AI."""
+    global voice_result, voice_mode_active
 
     if voice_result is None:
         return
@@ -380,17 +207,147 @@ def process_voice_result():
         print(f"Voice command failed: {data}")
         return
 
-    transcript = data
+    transcript = data.strip()
     print(f"Heard: {transcript}")
 
-    hint, action, extra_text = parse_hint_and_action(transcript)
+    if not transcript:
+        print("No speech detected")
+        return
 
-    if hint and action:
-        execute_voice_command(hint, action, extra_text)
+    lower = transcript.lower()
+
+    if "ai" in lower:
+        query = _extract_ai_query(transcript)
+        if query:
+            print(f"Querying AI with screenshot: {query}")
+            try:
+                screenshot = capture_screen()
+                response = query_openrouter_with_vision(query, screenshot)
+                print(f"AI response: {response}")
+                type_text(response)
+            except OpenRouterError as e:
+                print(f"AI query failed: {e}")
+        else:
+            print("Heard 'AI' but no query provided")
     else:
-        print(f"Could not parse command: {transcript}")
+        print(f"Typing: {transcript}")
+        type_text(transcript)
 
-    current_hints = {}
+
+def _extract_ai_query(transcript: str) -> str:
+    """Extract AI query from transcript, removing AI-related prefixes."""
+    import re
+
+    text = transcript.strip()
+    patterns_to_remove = [
+        r"^ai\s*[:]*\s*",
+        r"^ask\s+ai\s*[:]*\s*",
+        r"^ask\s+the\s+ai\s*[:]*\s*",
+    ]
+    for pattern in patterns_to_remove:
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+    return text.strip()
+
+
+# =========================
+# APP LAUNCHER GESTURE
+# =========================
+def play_app_launcher_sound(start_recording=True):
+    try:
+        if start_recording:
+            subprocess.run(APP_LAUNCHER_AUDIO_START.split(), check=False, timeout=1)
+        else:
+            subprocess.run(APP_LAUNCHER_AUDIO_STOP.split(), check=False, timeout=1)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+
+def app_launcher_record_thread():
+    global app_launcher_recording, app_launcher_voice_result
+    whisper_available = False
+    try:
+        from voice_nav.stt import transcribe_sync
+        from voice_nav.stt_elevenlabs import record_microphone
+
+        whisper_available = True
+    except ImportError:
+        pass
+
+    if whisper_available:
+        try:
+            audio_path = record_microphone(duration_sec=APP_LAUNCHER_RECORD_DURATION)
+            transcript = transcribe_sync(audio_path)
+            try:
+                os.remove(audio_path)
+            except:
+                pass
+            app_launcher_voice_result = ("success", transcript)
+        except Exception:
+            pass
+
+    if app_launcher_voice_result is None:
+        try:
+            transcript = transcribe_from_mic(duration_sec=APP_LAUNCHER_RECORD_DURATION)
+            app_launcher_voice_result = ("success", transcript)
+        except ElevenLabsSTTError as e:
+            app_launcher_voice_result = ("error", str(e))
+        except Exception as e:
+            app_launcher_voice_result = ("error", str(e))
+    app_launcher_recording = False
+
+
+def start_app_launcher():
+    global \
+        app_launcher_active, \
+        app_launcher_recording, \
+        app_launcher_voice_result, \
+        app_launcher_voice_start_time
+    print("Starting app launcher... Speak app name!")
+    play_app_launcher_sound(start_recording=True)
+    app_launcher_recording = True
+    app_launcher_voice_result = None
+    app_launcher_voice_start_time = time.time()
+    app_launcher_active = True
+    thread = threading.Thread(target=app_launcher_record_thread, daemon=True)
+    thread.start()
+
+
+def execute_app_launcher_command(command):
+    import shutil
+
+    command = command.strip()
+    if not command:
+        print("No command detected")
+        return
+
+    print(f"Processing: {command}")
+    executable = shutil.which(command)
+    if executable:
+        print(f"Found executable: {executable}")
+        subprocess.Popen([command], start_new_session=True)
+    else:
+        url = f"https://duckduckgo.com/?q={command}"
+        print(f"Opening search: {url}")
+        subprocess.Popen(["xdg-open", url], start_new_session=True)
+    play_app_launcher_sound(start_recording=False)
+
+
+def process_app_launcher_result():
+    global app_launcher_voice_result, app_launcher_active
+    if app_launcher_voice_result is None:
+        return
+    status, data = app_launcher_voice_result
+    app_launcher_voice_result = None
+    app_launcher_active = False
+
+    if status == "error":
+        print(f"App launcher voice failed: {data}")
+        play_app_launcher_sound(start_recording=False)
+        return
+
+    transcript = data
+    print(f"App launcher heard: {transcript}")
+    execute_app_launcher_command(transcript)
 
 
 # =========================
@@ -531,6 +488,12 @@ def run_tracking(trigger_voice_mode=None):
         voice_result, \
         voice_start_time
     global voice_mode_active, current_hints, hints_overlay_img, current_finger_count
+    global \
+        app_launcher_active, \
+        app_launcher_recording, \
+        app_launcher_voice_result, \
+        app_launcher_voice_start_time
+    global app_launcher_gesture_start, last_app_launcher_time
 
     cap = cv2.VideoCapture(1)
     print("FINAL gesture pipeline running (ESC to quit)")
@@ -606,16 +569,31 @@ def run_tracking(trigger_voice_mode=None):
                     if current_gesture:
                         print(f"Detected gesture: {current_gesture}")
 
+                # Workspace switching and app launcher use LEFT HAND only
                 # Note: With flipped camera, "Right" in MediaPipe = your left hand
-                # Use left hand for workspace switching
                 if label == "Right":
                     finger_count = count_fingers(lm)
                     if finger_count > 0:
                         handle_workspace_switch(finger_count)
                     current_finger_count = finger_count
-                else:
-                    if label == "Left":
-                        current_finger_count = 0
+
+                    # App launcher gesture (thumbs up)
+                    if is_thumbs_up(lm):
+                        if app_launcher_gesture_start is None:
+                            app_launcher_gesture_start = now
+                        elif now - app_launcher_gesture_start >= APP_LAUNCHER_HOLD_TIME:
+                            if now - last_app_launcher_time >= APP_LAUNCHER_DEBOUNCE:
+                                if not app_launcher_recording:
+                                    start_app_launcher()
+                                    last_app_launcher_time = now
+                                app_launcher_gesture_start = None
+                    else:
+                        app_launcher_gesture_start = None
+
+                # Reset state when right hand (MediaPipe "Left") is detected
+                if label == "Left":
+                    current_finger_count = 0
+                    app_launcher_gesture_start = None
 
         # =========================
         # MODE STATE MACHINE
@@ -654,6 +632,10 @@ def run_tracking(trigger_voice_mode=None):
         # Check for completed voice transcription
         if voice_result is not None:
             process_voice_result()
+
+        # Check for completed app launcher voice transcription
+        if app_launcher_voice_result is not None:
+            process_app_launcher_result()
 
         # Process nose tracking if eye mode is active
         if em:
@@ -723,6 +705,47 @@ def run_tracking(trigger_voice_mode=None):
                 2,
             )
             cv2.putText(frame, "Speak now!", (50, 75), FONT, 0.6, (200, 200, 255), 1)
+
+        # App launcher recording overlay
+        if app_launcher_recording:
+            elapsed = now - app_launcher_voice_start_time
+            remaining = max(0, APP_LAUNCHER_RECORD_DURATION - elapsed)
+
+            # Semi-transparent blue overlay
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (0, 0), (w, 80), (0, 0, 150), -1)
+            cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
+
+            # Recording indicator with pulsing dot
+            pulse = int(127 + 127 * np.sin(elapsed * 6))
+            cv2.circle(frame, (30, 40), 12, (0, 0, pulse + 128), -1)
+            cv2.putText(
+                frame,
+                f"APP LAUNCHER... {remaining:.1f}s",
+                (50, 50),
+                FONT,
+                1.0,
+                (255, 255, 255),
+                2,
+            )
+            cv2.putText(
+                frame, "Speak app name!", (50, 75), FONT, 0.6, (200, 200, 255), 1
+            )
+
+        # App launcher gesture hold progress
+        if app_launcher_gesture_start:
+            remaining = max(
+                0, APP_LAUNCHER_HOLD_TIME - (now - app_launcher_gesture_start)
+            )
+            cv2.putText(
+                frame,
+                f"APP LAUNCHER: {remaining:.2f}s",
+                (10, 145),
+                FONT,
+                0.6,
+                (255, 165, 0),
+                2,
+            )
 
         cv2.imshow("Gesture Control Pipeline", frame)
 
