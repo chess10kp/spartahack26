@@ -35,7 +35,8 @@ LEFT_CLOSE_THRESHOLD = 0.045
 PINCH_THRESHOLD = 0.05
 DOUBLE_CLICK_WINDOW = 0.35
 
-HOLD_TIME = 0.5  # Reduced for easier activation
+HOLD_TIME = 0.5  # For ONE gesture
+TWO_TRIGGER_TIME = 0.1  # For TWO gesture (nose mode)
 
 BASE_GAIN = 35
 MAX_GAIN = 120
@@ -87,6 +88,10 @@ VOICE_RECORD_DURATION = 4.0  # matches DEFAULT_DURATION_SEC in stt_elevenlabs
 # Voice mode with hints state
 voice_mode_active = False
 current_hints = {}  # hint -> Child mapping
+
+# Workspace gesture state
+last_workspace_switch_time = 0.0
+current_finger_count = 0
 
 
 # =========================
@@ -151,14 +156,13 @@ def start_voice_mode():
     # Create overlay image BEFORE starting threads (so hints are captured)
     global hints_overlay_img
     hints_overlay_img = create_hints_overlay_image()
-    
+
     # Start recording thread
     thread = threading.Thread(target=voice_record_thread, daemon=True)
     thread.start()
 
-    # Show overlay (runs in separate thread to not block main loop)
-    overlay_thread = threading.Thread(target=show_hints_overlay, daemon=True)
-    overlay_thread.start()
+    # Show overlay - runs inline, blocks until recording done
+    show_hints_overlay()
 
     print("Recording voice command... Speak: <hint> <action>")
 
@@ -174,7 +178,9 @@ def create_hints_overlay_image():
     # Convert to OpenCV format
     img = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
 
-    print(f"[DEBUG] Drawing {len(current_hints)} hints on overlay (img size: {img.shape})")
+    print(
+        f"[DEBUG] Drawing {len(current_hints)} hints on overlay (img size: {img.shape})"
+    )
 
     # Draw hints on the image
     for hint_text, child in current_hints.items():
@@ -461,13 +467,70 @@ def detect_right_gesture(lm):
 
 
 # =========================
+# LEFT HAND WORKSPACE GESTURES
+# =========================
+def count_fingers(lm):
+    """Count number of fingers extended on a hand.
+
+    Returns: Integer from 0-5 representing number of fingers up.
+    """
+    index = finger_up(lm, 5, 6, 8)
+    middle = finger_up(lm, 9, 10, 12)
+    ring = finger_up(lm, 13, 14, 16)
+    pinky = finger_up(lm, 17, 18, 20)
+
+    count = 0
+    if index:
+        count += 1
+    if middle:
+        count += 1
+    if ring:
+        count += 1
+    if pinky:
+        count += 1
+
+    return count
+
+
+def handle_workspace_switch(finger_count):
+    """Switch to workspace based on finger count.
+
+    Args:
+        finger_count: Number of fingers (1-4)
+    """
+    global last_workspace_switch_time
+
+    now = time.time()
+    if now - last_workspace_switch_time < 0.5:
+        return
+
+    if finger_count < 1 or finger_count > 4:
+        return
+
+    workspace_num = finger_count
+    print(f"Switching to workspace {workspace_num}")
+    subprocess.run(["swaymsg", "workspace", "number", str(workspace_num)], check=False)
+
+    last_workspace_switch_time = now
+
+
+# =========================
 # MAIN LOOP
 # =========================
-cap = cv2.VideoCapture(1)
+def run_tracking(trigger_voice_mode=None):
+    """Main tracking loop.
+    
+    Args:
+        trigger_voice_mode: Optional callback for voice mode trigger (unused, kept for API compat)
+    """
+    global vm, em, prev_em, prev_vm, gesture_start, smoothed_dir
+    global last_pinch_time, pinch_active, voice_recording, voice_result, voice_start_time
+    global voice_mode_active, current_hints, hints_overlay_img, current_finger_count
+    
+    cap = cv2.VideoCapture(1)
+    print("FINAL gesture pipeline running (ESC to quit)")
 
-print("FINAL gesture pipeline running (ESC to quit)")
-
-while True:
+    while True:
     ret, frame = cap.read()
     if not ret:
         break
@@ -536,6 +599,17 @@ while True:
                 if current_gesture:
                     print(f"Detected gesture: {current_gesture}")
 
+            # Note: With flipped camera, "Right" in MediaPipe = your left hand
+            # Use left hand for workspace switching
+            if label == "Right":
+                finger_count = count_fingers(lm)
+                if finger_count > 0:
+                    handle_workspace_switch(finger_count)
+                current_finger_count = finger_count
+            else:
+                if label == "Left":
+                    current_finger_count = 0
+
     # =========================
     # MODE STATE MACHINE
     # =========================
@@ -552,10 +626,9 @@ while True:
             em = False
         gesture_start["ONE"] = None
 
-    if gesture_start["TWO"] and now - gesture_start["TWO"] >= HOLD_TIME:
-        em = not em
-        if em:
-            vm = False
+    if gesture_start["TWO"] and now - gesture_start["TWO"] >= TWO_TRIGGER_TIME:
+        em = True
+        vm = False
         gesture_start["TWO"] = None
 
     # Start/stop nose tracker when eye mode changes
@@ -594,13 +667,26 @@ while True:
     cv2.putText(frame, f"VOICE MODE (1): {vm}", (10, 30), FONT, 0.7, vm_color, 2)
     cv2.putText(frame, f"EYE MODE (2): {em}", (10, 60), FONT, 0.7, em_color, 2)
 
+    # Workspace finger count display
+    if current_finger_count > 0:
+        cv2.putText(
+            frame,
+            f"WORKSPACE: {current_finger_count}",
+            (10, 90),
+            FONT,
+            0.8,
+            (0, 255, 255),
+            2,
+        )
+
     for i, g in enumerate(["ONE", "TWO"]):
         if gesture_start[g]:
-            remaining = max(0, HOLD_TIME - (now - gesture_start[g]))
+            hold_time = HOLD_TIME if g == "ONE" else TWO_TRIGGER_TIME
+            remaining = max(0, hold_time - (now - gesture_start[g]))
             cv2.putText(
                 frame,
-                f"{g} HOLD: {remaining:.1f}s",
-                (10, 100 + i * 25),
+                f"{g} HOLD: {remaining:.2f}s",
+                (10, 120 + i * 25),
                 FONT,
                 0.6,
                 (255, 255, 0),

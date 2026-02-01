@@ -12,6 +12,7 @@ dependencies = [
     "requests",
     "sounddevice",
     "soundfile",
+    "pydantic>=2.12.5",
 ]
 
 # System dependencies that need to be installed via package manager:

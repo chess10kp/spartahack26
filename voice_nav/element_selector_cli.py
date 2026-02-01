@@ -92,8 +92,8 @@ def display_hints_via_pygame(screenshot, hints):
 
     screen_width, screen_height = screenshot.size
 
-    screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN)
-    pygame.display.set_caption("Hints Overlay")
+    screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN | pygame.NOFRAME)
+    pygame.display.set_caption("HintsOverlay")
 
     font = pygame.font.SysFont("Arial", 24, bold=True)
     clock = pygame.time.Clock()
@@ -182,7 +182,7 @@ def display_hints_via_pygame(screenshot, hints):
                     )
 
                     if len(updated_hints) == 1:
-                        result = hint_state
+                        result = list(updated_hints.keys())[0]
                         running = False
                     elif len(updated_hints) == 0:
                         hint_state = hint_state[:-1]

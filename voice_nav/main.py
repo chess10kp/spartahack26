@@ -44,21 +44,19 @@ def take_screenshot():
 def on_hotkey():
     """Hotkey handler to trigger element selection."""
     logging.info("Element selection hotkey pressed")
-    try:
-        run_element_selection()
-    except ModuleNotFoundError as e:
-        if "gi" in str(e):
-            logging.warning(
-                "PyGObject/GTK not available; falling back to pygame selector"
-            )
-            try:
-                from element_selector_cli import run_element_selection_cli
+    from element_selector_cli import run_element_selection_cli
+    run_element_selection_cli()
 
-                run_element_selection_cli()
-            except Exception as inner:
-                logging.error(f"Fallback selector failed: {inner}")
-        else:
-            logging.error(f"Element selection failed: {e}")
+
+def trigger_element_selection():
+    """Trigger element selection (called from external modules)."""
+    import os
+    import sys
+    voice_nav_dir = os.path.dirname(__file__)
+    if voice_nav_dir not in sys.path:
+        sys.path.insert(0, voice_nav_dir)
+    from element_selector_cli import run_element_selection_cli
+    run_element_selection_cli()
 
 
 def children_to_blocks(children: list[Child], hints: dict[str, Child]) -> list[Block]:
