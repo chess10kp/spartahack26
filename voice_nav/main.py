@@ -1,24 +1,40 @@
-import PIL.ImageGrab
-import datetime
-import os
-import logging
-from pynput import keyboard
+"""Main voice navigation system with complete flow integration."""
 
-from element_selector import run_element_selection
-from stt_elevenlabs import transcribe_from_mic, ElevenLabsSTTError
-from typing_control import type_text
+import asyncio
+import io
+import logging
+import os
+import sys
+import time
+
+from PIL import Image
+from PIL import ImageGrab
+
+from schemas import Block, Command, ResolveResult
+from stt import transcribe_audio_file
+from planner import plan_command
+from element_selector import detect_elements, get_hints
+from child import Child
+from mouse import click, move
+from mouse_enums import MouseButton, MouseButtonState
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
+logger = logging.getLogger(__name__)
 
 
 def take_screenshot():
     """Take a screenshot and save it."""
-    logging.debug("Starting screenshot capture")
     os.makedirs("screenshots", exist_ok=True)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
     filename = os.path.join("screenshots", f"screenshot_{timestamp}.png")
-    screenshot = PIL.ImageGrab.grab()
+    screenshot = ImageGrab.grab()
     screenshot.save(filename)
-    logging.debug(f"Screenshot saved as {filename}")
-    return filename
+    logger.info(f"Screenshot saved as {filename}")
+    return filename, screenshot
 
 
 def on_hotkey():
@@ -37,6 +53,197 @@ def on_hotkey():
                 logging.error(f"Fallback selector failed: {inner}")
         else:
             logging.error(f"Element selection failed: {e}")
+def children_to_blocks(children: list[Child], hints: dict[str, Child]) -> list[Block]:
+    """Convert Child elements to Block format.
+
+    Args:
+        children: List of Child elements
+        hints: Hint mapping
+
+    Returns:
+        List of Block objects
+    """
+    import uuid
+
+    blocks = []
+    for i, child in enumerate(children):
+        hint_key = next((k for k, v in hints.items() if v == child), None)
+        block = Block(
+            id=str(uuid.uuid4()),
+            x=child.absolute_position[0],
+            y=child.absolute_position[1],
+            w=child.width,
+            h=child.height,
+            label=f"element_{i}",
+            score=1.0,
+            text=None,
+            hint=hint_key,
+        )
+        blocks.append(block)
+    return blocks
+
+
+async def execute_command(command: Command):
+    """Execute a command.
+
+    Args:
+        command: Command to execute
+    """
+    logger.info(f"Executing command: {command.action}")
+
+    if command.action == "click":
+        if command.target and "block_id" in command.target:
+            block_id = command.target["block_id"]
+            block = _find_block_by_id(block_id)
+            if block:
+                center_x = int(block.x + block.w / 2)
+                center_y = int(block.y + block.h / 2)
+                logger.info(f"Clicking at ({center_x}, {center_y})")
+                click(
+                    center_x,
+                    center_y,
+                    MouseButton.LEFT,
+                    (MouseButtonState.DOWN, MouseButtonState.UP),
+                    1,
+                )
+
+    elif command.action == "double_click":
+        if command.target and "block_id" in command.target:
+            block_id = command.target["block_id"]
+            block = _find_block_by_id(block_id)
+            if block:
+                center_x = int(block.x + block.w / 2)
+                center_y = int(block.y + block.h / 2)
+                logger.info(f"Double-clicking at ({center_x}, {center_y})")
+                click(
+                    center_x,
+                    center_y,
+                    MouseButton.LEFT,
+                    (MouseButtonState.DOWN, MouseButtonState.UP),
+                    2,
+                )
+
+    elif command.action == "type":
+        if command.text:
+            import pyautogui
+
+            pyautogui.typewrite(command.text)
+            logger.info(f"Typed: {command.text}")
+
+    elif command.action == "scroll":
+        import pyautogui
+
+        if command.scroll:
+            direction = command.scroll.get("direction", "down")
+            amount = command.scroll.get("amount", 500)
+            if direction == "down":
+                pyautogui.scroll(-amount)
+            else:
+                pyautogui.scroll(amount)
+            logger.info(f"Scrolled {direction} by {amount}")
+
+    elif command.action == "noop":
+        logger.info("No action taken")
+
+    elif command.action == "ask_clarification":
+        logger.warning(f"Clarification needed: {command.reason}")
+
+
+_current_blocks: list[Block] = []
+
+
+def _find_block_by_id(block_id: str) -> Block:
+    """Find a block by ID.
+
+    Args:
+        block_id: Block ID to find
+
+    Returns:
+        Block object
+    """
+    for block in _current_blocks:
+        if block.id == block_id:
+            return block
+    raise ValueError(f"Block not found: {block_id}")
+
+
+async def resolve_voice_command(audio_path: str) -> ResolveResult:
+    """Complete flow: screenshot → detect → transcribe → plan.
+
+    Args:
+        audio_path: Path to audio file with voice command
+
+    Returns:
+        ResolveResult with transcript and command
+    """
+    global _current_blocks
+
+    logger.info("=" * 60)
+    logger.info("Starting Voice Command Resolution")
+    logger.info("=" * 60)
+
+    _, image = take_screenshot()
+    logger.info("[Step 1] Captured screenshot")
+
+    children = detect_elements(image)
+    logger.info(f"[Step 2] Detected {len(children)} elements")
+
+    hints = get_hints(children)
+    logger.info(f"[Step 3] Generated {len(hints)} hints")
+
+    blocks = children_to_blocks(children, hints)
+    _current_blocks = blocks
+    logger.info(f"[Step 4] Created {len(blocks)} blocks")
+
+    transcript = await transcribe_audio_file(audio_path)
+    logger.info(f"[Step 5] Transcribed audio: '{transcript}'")
+
+    command = await plan_command(transcript, blocks)
+    logger.info(
+        f"[Step 6] Planned command: {command.action} (confidence: {command.confidence})"
+    )
+
+    logger.info("=" * 60)
+    logger.info("Voice Command Resolution Complete")
+    logger.info("=" * 60)
+
+    return ResolveResult(transcript=transcript, command=command, blocks=blocks)
+
+    logger.info("=" * 60)
+    logger.info("Voice Command Resolution Complete")
+    logger.info("=" * 60)
+
+    return ResolveResult(transcript=transcript, command=command, blocks=blocks)
+
+
+async def resolve_screenshot_only(screenshot_path: str | None = None) -> ResolveResult:
+    """Detect elements from screenshot only (no voice).
+
+    Args:
+        screenshot_path: Optional path to screenshot (captures if not provided)
+
+    Returns:
+        ResolveResult with blocks
+    """
+    global _current_blocks
+
+    if screenshot_path:
+        image = Image.open(screenshot_path)
+    else:
+        _, image = take_screenshot()
+
+    children = detect_elements(image)
+    hints = get_hints(children)
+    blocks = children_to_blocks(children, hints)
+    _current_blocks = blocks
+
+    logger.info(f"Detected {len(blocks)} blocks from screenshot")
+
+    return ResolveResult(
+        transcript="",
+        command=Command(action="noop", confidence=1.0, reason="Screenshot only mode"),
+        blocks=blocks,
+    )
 
 
 def on_voice_hotkey():
@@ -90,10 +297,19 @@ def start_hotkey_listener():
     return listener
 def main():
     """Main entry point."""
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    logger.info("Voice Navigation System starting")
+    print("\n" + "=" * 60)
+    print("  Voice Navigation System")
+    print("  Multimodal Hands-Free Interface")
+    print("=" * 60)
+    print("\nFeatures:")
+    print("  • Voice command recognition (Whisper)")
+    print("  • UI element detection (OpenCV)")
+    print("  • AI command planning")
+    print("  • Mouse/keyboard control")
+    print("\nUsage:")
+    print("  See examples in examples/ directory")
+    print("\n")
 
     logging.info("Voice Navigation System starting")
     print("Voice Navigation System Started")
@@ -110,6 +326,23 @@ def main():
     except KeyboardInterrupt:
         print("\nShutting down...")
         listener.stop()
+
+async def run_demo():
+    """Run a demo of the voice navigation system."""
+    print("\nRunning Voice Navigation Demo...")
+
+    result = await resolve_screenshot_only()
+    if result.blocks:
+        blocks = result.blocks
+        print(f"\nDetected {len(blocks)} elements")
+
+        print("\nSample blocks:")
+        for i, block in enumerate(blocks[:5]):
+            print(
+                f"  {i + 1}. {block.label} at ({block.x}, {block.y}) - hint: {block.hint}"
+            )
+    else:
+        print("\nNo blocks detected")
 
 
 if __name__ == "__main__":
