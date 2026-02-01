@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import platform
 import subprocess
+import random
 import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
@@ -34,7 +35,9 @@ else:
 
 def move_mouse(x, y):
     if use_ydotool:
-        subprocess.run(["ydotool", "mousemove", str(x), str(y)], capture_output=True)
+        subprocess.run(
+            ["ydotool", "mousemove", "-a", str(x), str(y)], capture_output=True
+        )
     elif use_pynput:
         mouse.position = (x, y)
     else:
@@ -50,14 +53,13 @@ DEADZONE = 1  # pixels to ignore jitter
 
 # Iris landmark indices in FaceLandmarker output (same numbering as FaceMesh)
 RIGHT_IRIS = [469, 470, 471, 472]
-LEFT_IRIS = [474, 475, 476, 477]
 
 # ---------- Create Face Landmarker ----------
 options = vision.FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=MODEL_PATH),
     running_mode=vision.RunningMode.VIDEO,
     num_faces=1,
-    output_face_blendshapes=False,
+    output_face_blendshapes=True,
     output_facial_transformation_matrixes=False,
 )
 
@@ -97,19 +99,19 @@ while True:
     if result.face_landmarks:
         landmarks = result.face_landmarks[0]
 
-        # average both iris centers (normalized [0,1])
+        # average iris center (normalized [0,1])
         ix = iy = 0.0
-        for idx in RIGHT_IRIS + LEFT_IRIS:
+        for idx in RIGHT_IRIS:
             lm = landmarks[idx]
             ix += lm.x
             iy += lm.y
-        ix /= len(RIGHT_IRIS + LEFT_IRIS)
-        iy /= len(RIGHT_IRIS + LEFT_IRIS)
+        ix /= len(RIGHT_IRIS)
+        iy /= len(RIGHT_IRIS)
 
-        # calibration for first ~30 frames
+        # calibration for first ~60 frames
         if not calibrated:
             calib_samples.append((ix, iy))
-            if len(calib_samples) >= 30:
+            if len(calib_samples) >= 60:
                 base_ix = float(np.mean([s[0] for s in calib_samples]))
                 base_iy = float(np.mean([s[1] for s in calib_samples]))
                 calibrated = True
@@ -127,15 +129,14 @@ while True:
         target_x = max(0, min(SCREEN_W - 1, target_x))
         target_y = max(0, min(SCREEN_H - 1, target_y))
 
-        # smoothing
-        target_x = int(prev_x + SMOOTHING * (target_x - prev_x))
-        target_y = int(prev_y + SMOOTHING * (target_y - prev_y))
-
-        # deadzone - only move if movement exceeds threshold
-        movement = abs(target_x - prev_x) + abs(target_y - prev_y)
-        if movement > DEADZONE:
+        # only move if iris position has changed significantly (0.005 threshold)
+        iris_delta = abs(ix - prev_ix) + abs(iy - prev_iy)
+        if iris_delta > 0.005:
+            print(
+                f"Iris moved by {iris_delta:.4f}, moving mouse to ({target_x}, {target_y})"
+            )
             move_mouse(target_x, target_y)
-            prev_x, prev_y = target_x, target_y
+            prev_ix, prev_iy = ix, iy
     else:
         cv2.putText(
             frame,
