@@ -7,10 +7,10 @@ from mediapipe.tasks.python import vision
 
 # ---------- Settings ----------
 MODEL_PATH = "face_landmarker.task"  # downloaded file
-SMOOTHING = 0.25                      # 0.10–0.25
-SCALE_X = 1.35                        # sensitivity
+SMOOTHING = 0.25  # 0.10–0.25
+SCALE_X = 1.35  # sensitivity
 SCALE_Y = 1.35
-DEADZONE = 20                         # pixels to ignore jitter
+DEADZONE = 5  # pixels to ignore jitter
 SCREEN_W, SCREEN_H = pyautogui.size()
 
 pyautogui.FAILSAFE = False
@@ -36,7 +36,9 @@ base_ix, base_iy = 0.5, 0.5
 calib_samples = []
 
 cap = cv2.VideoCapture(0)
-print("Look at the CENTER of your screen for ~2 seconds to auto-calibrate. Press ESC to quit.")
+print(
+    "Look at the CENTER of your screen for ~2 seconds to auto-calibrate. Press ESC to quit."
+)
 
 frame_id = 0
 
@@ -96,17 +98,31 @@ while True:
 
         # deadzone (ignore tiny jitter)
         if abs(curr_x - prev_x) + abs(curr_y - prev_y) > DEADZONE:
+            print(f"Moving to ({curr_x}, {curr_y})")
             pyautogui.moveTo(curr_x, curr_y)
             prev_x, prev_y = curr_x, curr_y
 
         # debug dot on camera view
         cv2.circle(frame, (int(ix * w), int(iy * h)), 5, (0, 255, 0), -1)
-        cv2.putText(frame, "Tracking" if calibrated else "Calibrating...",
-                    (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
-                    (0, 255, 0) if calibrated else (0, 255, 255), 2)
+        cv2.putText(
+            frame,
+            "Tracking" if calibrated else "Calibrating...",
+            (20, 40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.9,
+            (0, 255, 0) if calibrated else (0, 255, 255),
+            2,
+        )
     else:
-        cv2.putText(frame, "No face detected", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+        cv2.putText(
+            frame,
+            "No face detected",
+            (20, 40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.9,
+            (0, 0, 255),
+            2,
+        )
 
     cv2.imshow("Eye Cursor (MediaPipe Tasks)", frame)
     frame_id += 1
