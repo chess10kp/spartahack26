@@ -9,11 +9,11 @@ dependencies = [
     "opencv-python",
     "pynput",
     "numpy",
-    "pygame",
 ]
 
 # System dependencies that need to be installed via package manager:
 # - python-pycairo
 # - python-pygobject
-# - python-evdev
-# - python-dbus
+# - python-evdev (optional, for advanced mouse input)
+# - python-dbus (optional, for Wayland support)
+# - opencv (for computer vision element detection)

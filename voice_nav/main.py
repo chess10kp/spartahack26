@@ -4,7 +4,7 @@ import os
 import logging
 from pynput import keyboard
 
-from element_selector_cli import run_element_selection_cli
+from element_selector import run_element_selection
 
 
 def take_screenshot():
@@ -22,13 +22,13 @@ def take_screenshot():
 def on_hotkey():
     """Hotkey handler to trigger element selection."""
     logging.info("Element selection hotkey pressed")
-    run_element_selection_cli()
+    run_element_selection()
 
 
 def start_hotkey_listener():
     """Start global hotkey listener for element selection."""
-    logging.debug("Setting up hotkey listener for Ctrl+Shift+E")
-    hotkey = keyboard.HotKey(keyboard.HotKey.parse("<ctrl>+<shift>+e"), on_hotkey)
+    logging.debug("Setting up hotkey listener for E")
+    hotkey = keyboard.HotKey(keyboard.HotKey.parse("<e>"), on_hotkey)
 
     def on_press(k):
         if k is not None:
@@ -54,7 +54,7 @@ def main():
 
     logging.info("Voice Navigation System starting")
     print("Voice Navigation System Started")
-    print("Press Ctrl+Shift+E to enter element selection mode")
+    print("Press E to enter element selection mode")
     print("Press Ctrl+C to exit")
 
     listener = start_hotkey_listener()
