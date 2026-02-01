@@ -20,7 +20,7 @@ from mouse import click, move
 from mouse_enums import MouseButton, MouseButtonState
 from typing_control import type_text
 from pynput import keyboard
-from ai_client import query_openrouter, OpenRouterError
+from ai_client import query_openrouter_with_vision, OpenRouterError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -253,7 +253,7 @@ async def resolve_screenshot_only(screenshot_path: str | None = None) -> Resolve
 
 
 def on_voice_hotkey():
-    """Hotkey handler to capture speech and type it or query AI."""
+    """Hotkey handler to capture speech and type it or query AI with screenshot."""
     logging.info("Voice hotkey pressed; recording...")
     try:
         transcript = transcribe_from_mic()
@@ -265,9 +265,10 @@ def on_voice_hotkey():
         if "ai" in lower:
             query = _extract_ai_query(transcript)
             if query:
-                logging.info(f"Querying AI with: {query}")
+                logging.info(f"Querying AI with screenshot: {query}")
                 try:
-                    response = query_openrouter(query)
+                    _, screenshot = take_screenshot()
+                    response = query_openrouter_with_vision(query, screenshot)
                     logging.info(f"AI response: {response}")
                     print(f"AI: {response}")
                     type_text(response)

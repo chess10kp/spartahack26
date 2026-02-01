@@ -24,6 +24,7 @@ from stt_elevenlabs import transcribe_from_mic, ElevenLabsSTTError
 from typing_control import type_text
 from element_selector import capture_screen, detect_elements, get_hints
 from child import Child
+from ai_client import query_openrouter, OpenRouterError
 
 # =========================
 # CONFIG
@@ -315,17 +316,34 @@ def execute_voice_command(hint: str, action: str, extra_text: str):
     print(f"Executing: {action} on hint '{hint}' at ({center_x}, {center_y})")
 
     if action == "click":
-        pyautogui.click(center_x, center_y)
+        subprocess.run(
+            ["ydotool", "mousemove", str(center_x), str(center_y)], check=False
+        )
+        subprocess.run(["ydotool", "click", "0xC0"], check=False)
     elif action == "double_click":
-        pyautogui.doubleClick(center_x, center_y)
+        subprocess.run(
+            ["ydotool", "mousemove", str(center_x), str(center_y)], check=False
+        )
+        subprocess.run(["ydotool", "click", "0xC0"], check=False)
+        time.sleep(0.1)
+        subprocess.run(["ydotool", "click", "0xC0"], check=False)
     elif action == "right_click":
-        pyautogui.rightClick(center_x, center_y)
+        subprocess.run(
+            ["ydotool", "mousemove", str(center_x), str(center_y)], check=False
+        )
+        subprocess.run(["ydotool", "click", "0xC1"], check=False)
     elif action == "type":
-        pyautogui.click(center_x, center_y)
+        subprocess.run(
+            ["ydotool", "mousemove", str(center_x), str(center_y)], check=False
+        )
+        subprocess.run(["ydotool", "click", "0xC0"], check=False)
         time.sleep(0.1)
         type_text(extra_text)
     elif action == "query":
-        pyautogui.click(center_x, center_y)
+        subprocess.run(
+            ["ydotool", "mousemove", str(center_x), str(center_y)], check=False
+        )
+        subprocess.run(["ydotool", "click", "0xC0"], check=False)
         time.sleep(0.1)
         response = query_ai(extra_text)
         if response:
@@ -337,31 +355,13 @@ def query_ai(prompt: str) -> str:
     import os
 
     try:
-        import openai
-
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            print("OPENAI_API_KEY not set, echoing prompt")
-            return prompt
-
-        client = openai.OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a helpful assistant. Provide concise, direct responses suitable for typing into a text field. No explanations, just the answer.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=200,
-        )
-        return response.choices[0].message.content.strip()
-    except ImportError:
-        print("openai package not installed, echoing prompt")
+        response = query_openrouter(prompt)
+        return response
+    except OpenRouterError as e:
+        print(f"OpenRouter error: {e}, echoing prompt")
         return prompt
     except Exception as e:
-        print(f"AI query failed: {e}")
+        print(f"AI query failed: {e}, echoing prompt")
         return prompt
 
 
@@ -519,209 +519,220 @@ def handle_workspace_switch(finger_count):
 # =========================
 def run_tracking(trigger_voice_mode=None):
     """Main tracking loop.
-    
+
     Args:
         trigger_voice_mode: Optional callback for voice mode trigger (unused, kept for API compat)
     """
     global vm, em, prev_em, prev_vm, gesture_start, smoothed_dir
-    global last_pinch_time, pinch_active, voice_recording, voice_result, voice_start_time
+    global \
+        last_pinch_time, \
+        pinch_active, \
+        voice_recording, \
+        voice_result, \
+        voice_start_time
     global voice_mode_active, current_hints, hints_overlay_img, current_finger_count
-    
+
     cap = cv2.VideoCapture(1)
     print("FINAL gesture pipeline running (ESC to quit)")
 
     while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-    frame = cv2.flip(frame, 1)
-    h, w, _ = frame.shape
-    now = time.time()
+        frame = cv2.flip(frame, 1)
+        h, w, _ = frame.shape
+        now = time.time()
 
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
-    timestamp_ms = int(time.time() * 1000)
-    results = hand_landmarker.detect_for_video(mp_image, timestamp_ms)
+        timestamp_ms = int(time.time() * 1000)
+        results = hand_landmarker.detect_for_video(mp_image, timestamp_ms)
 
-    current_gesture = None
+        current_gesture = None
 
-    if results.hand_landmarks and results.handedness:
-        for hand_lm, handedness in zip(results.hand_landmarks, results.handedness):
-            lm = hand_lm
-            label = handedness[0].category_name
+        if results.hand_landmarks and results.handedness:
+            for hand_lm, handedness in zip(results.hand_landmarks, results.handedness):
+                lm = hand_lm
+                label = handedness[0].category_name
 
-            color = (0, 255, 0) if label == "Left" else (0, 0, 255)
+                color = (0, 255, 0) if label == "Left" else (0, 0, 255)
 
-            # Draw landmarks manually (no mp_draw in Tasks API)
-            for i, p in enumerate(lm):
-                x, y = int(p.x * w), int(p.y * h)
-                cv2.circle(frame, (x, y), 3, color, -1)
-                cv2.putText(frame, str(i), (x + 4, y - 4), FONT, 0.35, (255, 255, 0), 1)
+                # Draw landmarks manually (no mp_draw in Tasks API)
+                for i, p in enumerate(lm):
+                    x, y = int(p.x * w), int(p.y * h)
+                    cv2.circle(frame, (x, y), 3, color, -1)
+                    cv2.putText(
+                        frame, str(i), (x + 4, y - 4), FONT, 0.35, (255, 255, 0), 1
+                    )
 
-            # Draw connections
-            connections = [
-                (0, 1),
-                (1, 2),
-                (2, 3),
-                (3, 4),  # thumb
-                (0, 5),
-                (5, 6),
-                (6, 7),
-                (7, 8),  # index
-                (0, 9),
-                (9, 10),
-                (10, 11),
-                (11, 12),  # middle
-                (0, 13),
-                (13, 14),
-                (14, 15),
-                (15, 16),  # ring
-                (0, 17),
-                (17, 18),
-                (18, 19),
-                (19, 20),  # pinky
-                (5, 9),
-                (9, 13),
-                (13, 17),  # palm
-            ]
-            for c1, c2 in connections:
-                p1 = (int(lm[c1].x * w), int(lm[c1].y * h))
-                p2 = (int(lm[c2].x * w), int(lm[c2].y * h))
-                cv2.line(frame, p1, p2, (200, 200, 200), 2)
+                # Draw connections
+                connections = [
+                    (0, 1),
+                    (1, 2),
+                    (2, 3),
+                    (3, 4),  # thumb
+                    (0, 5),
+                    (5, 6),
+                    (6, 7),
+                    (7, 8),  # index
+                    (0, 9),
+                    (9, 10),
+                    (10, 11),
+                    (11, 12),  # middle
+                    (0, 13),
+                    (13, 14),
+                    (14, 15),
+                    (15, 16),  # ring
+                    (0, 17),
+                    (17, 18),
+                    (18, 19),
+                    (19, 20),  # pinky
+                    (5, 9),
+                    (9, 13),
+                    (13, 17),  # palm
+                ]
+                for c1, c2 in connections:
+                    p1 = (int(lm[c1].x * w), int(lm[c1].y * h))
+                    p2 = (int(lm[c2].x * w), int(lm[c2].y * h))
+                    cv2.line(frame, p1, p2, (200, 200, 200), 2)
 
-            # Note: With flipped camera, "Left" in MediaPipe = your right hand
-            # So we check for "Left" label to detect right hand gestures
-            if label == "Left":
-                handle_pinch_clicks(lm)
-                current_gesture = detect_right_gesture(lm)
-                if current_gesture:
-                    print(f"Detected gesture: {current_gesture}")
-
-            # Note: With flipped camera, "Right" in MediaPipe = your left hand
-            # Use left hand for workspace switching
-            if label == "Right":
-                finger_count = count_fingers(lm)
-                if finger_count > 0:
-                    handle_workspace_switch(finger_count)
-                current_finger_count = finger_count
-            else:
+                # Note: With flipped camera, "Left" in MediaPipe = your right hand
+                # So we check for "Left" label to detect right hand gestures
                 if label == "Left":
-                    current_finger_count = 0
+                    handle_pinch_clicks(lm)
+                    current_gesture = detect_right_gesture(lm)
+                    if current_gesture:
+                        print(f"Detected gesture: {current_gesture}")
 
-    # =========================
-    # MODE STATE MACHINE
-    # =========================
-    for g in ["ONE", "TWO"]:
-        if current_gesture == g:
-            if gesture_start[g] is None:
-                gesture_start[g] = now
-        else:
-            gesture_start[g] = None
+                # Note: With flipped camera, "Right" in MediaPipe = your left hand
+                # Use left hand for workspace switching
+                if label == "Right":
+                    finger_count = count_fingers(lm)
+                    if finger_count > 0:
+                        handle_workspace_switch(finger_count)
+                    current_finger_count = finger_count
+                else:
+                    if label == "Left":
+                        current_finger_count = 0
 
-    if gesture_start["ONE"] and now - gesture_start["ONE"] >= HOLD_TIME:
-        vm = not vm
-        if vm:
-            em = False
-        gesture_start["ONE"] = None
+        # =========================
+        # MODE STATE MACHINE
+        # =========================
+        for g in ["ONE", "TWO"]:
+            if current_gesture == g:
+                if gesture_start[g] is None:
+                    gesture_start[g] = now
+            else:
+                gesture_start[g] = None
 
-    if gesture_start["TWO"] and now - gesture_start["TWO"] >= TWO_TRIGGER_TIME:
-        em = True
-        vm = False
-        gesture_start["TWO"] = None
+        if gesture_start["ONE"] and now - gesture_start["ONE"] >= HOLD_TIME:
+            vm = not vm
+            if vm:
+                em = False
+            gesture_start["ONE"] = None
 
-    # Start/stop nose tracker when eye mode changes
-    if em and not prev_em:
-        nose_tracker.start()
-    elif not em and prev_em:
-        nose_tracker.stop()
-    prev_em = em
+        if gesture_start["TWO"] and now - gesture_start["TWO"] >= TWO_TRIGGER_TIME:
+            em = True
+            vm = False
+            gesture_start["TWO"] = None
 
-    # Trigger voice mode when activated (screenshot + hints + recording)
-    if vm and not prev_vm and not voice_recording:
-        start_voice_mode()
-        vm = False  # Reset after starting
-    prev_vm = vm
-
-    # Check for completed voice transcription
-    if voice_result is not None:
-        process_voice_result()
-
-    # Process nose tracking if eye mode is active
-    if em:
-        frame, double_blink = nose_tracker.process_frame(frame)
-        if double_blink:
-            # Double blink detected - click and exit eye mode
-            subprocess.run(["ydotool", "click", "0xC0"])
-            print("Double blink detected - clicked and exiting eye mode")
-            em = False
+        # Start/stop nose tracker when eye mode changes
+        if em and not prev_em:
+            nose_tracker.start()
+        elif not em and prev_em:
             nose_tracker.stop()
+        prev_em = em
 
-    # =========================
-    # UI OVERLAY
-    # =========================
-    vm_color = (0, 255, 0) if vm else (0, 0, 255)
-    em_color = (0, 255, 0) if em else (0, 0, 255)
+        # Trigger voice mode when activated (screenshot + hints + recording)
+        if vm and not prev_vm and not voice_recording:
+            start_voice_mode()
+            vm = False  # Reset after starting
+        prev_vm = vm
 
-    cv2.putText(frame, f"VOICE MODE (1): {vm}", (10, 30), FONT, 0.7, vm_color, 2)
-    cv2.putText(frame, f"EYE MODE (2): {em}", (10, 60), FONT, 0.7, em_color, 2)
+        # Check for completed voice transcription
+        if voice_result is not None:
+            process_voice_result()
 
-    # Workspace finger count display
-    if current_finger_count > 0:
-        cv2.putText(
-            frame,
-            f"WORKSPACE: {current_finger_count}",
-            (10, 90),
-            FONT,
-            0.8,
-            (0, 255, 255),
-            2,
-        )
+        # Process nose tracking if eye mode is active
+        if em:
+            frame, double_blink = nose_tracker.process_frame(frame)
+            if double_blink:
+                # Double blink detected - click and exit eye mode
+                subprocess.run(["ydotool", "click", "0xC0"])
+                print("Double blink detected - clicked and exiting eye mode")
+                em = False
+                nose_tracker.stop()
 
-    for i, g in enumerate(["ONE", "TWO"]):
-        if gesture_start[g]:
-            hold_time = HOLD_TIME if g == "ONE" else TWO_TRIGGER_TIME
-            remaining = max(0, hold_time - (now - gesture_start[g]))
+        # =========================
+        # UI OVERLAY
+        # =========================
+        vm_color = (0, 255, 0) if vm else (0, 0, 255)
+        em_color = (0, 255, 0) if em else (0, 0, 255)
+
+        cv2.putText(frame, f"VOICE MODE (1): {vm}", (10, 30), FONT, 0.7, vm_color, 2)
+        cv2.putText(frame, f"EYE MODE (2): {em}", (10, 60), FONT, 0.7, em_color, 2)
+
+        # Workspace finger count display
+        if current_finger_count > 0:
             cv2.putText(
                 frame,
-                f"{g} HOLD: {remaining:.2f}s",
-                (10, 120 + i * 25),
+                f"WORKSPACE: {current_finger_count}",
+                (10, 90),
                 FONT,
-                0.6,
-                (255, 255, 0),
+                0.8,
+                (0, 255, 255),
                 2,
             )
 
-    # Voice recording overlay
-    if voice_recording:
-        elapsed = now - voice_start_time
-        remaining = max(0, VOICE_RECORD_DURATION - elapsed)
+        for i, g in enumerate(["ONE", "TWO"]):
+            if gesture_start[g]:
+                hold_time = HOLD_TIME if g == "ONE" else TWO_TRIGGER_TIME
+                remaining = max(0, hold_time - (now - gesture_start[g]))
+                cv2.putText(
+                    frame,
+                    f"{g} HOLD: {remaining:.2f}s",
+                    (10, 120 + i * 25),
+                    FONT,
+                    0.6,
+                    (255, 255, 0),
+                    2,
+                )
 
-        # Semi-transparent red overlay
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (0, 0), (w, 80), (0, 0, 150), -1)
-        cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
+        # Voice recording overlay
+        if voice_recording:
+            elapsed = now - voice_start_time
+            remaining = max(0, VOICE_RECORD_DURATION - elapsed)
 
-        # Recording indicator with pulsing dot
-        pulse = int(127 + 127 * np.sin(elapsed * 6))
-        cv2.circle(frame, (30, 40), 12, (0, 0, pulse + 128), -1)
-        cv2.putText(
-            frame,
-            f"RECORDING... {remaining:.1f}s",
-            (50, 50),
-            FONT,
-            1.0,
-            (255, 255, 255),
-            2,
-        )
-        cv2.putText(frame, "Speak now!", (50, 75), FONT, 0.6, (200, 200, 255), 1)
+            # Semi-transparent red overlay
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (0, 0), (w, 80), (0, 0, 150), -1)
+            cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
 
-    cv2.imshow("Gesture Control Pipeline", frame)
+            # Recording indicator with pulsing dot
+            pulse = int(127 + 127 * np.sin(elapsed * 6))
+            cv2.circle(frame, (30, 40), 12, (0, 0, pulse + 128), -1)
+            cv2.putText(
+                frame,
+                f"RECORDING... {remaining:.1f}s",
+                (50, 50),
+                FONT,
+                1.0,
+                (255, 255, 255),
+                2,
+            )
+            cv2.putText(frame, "Speak now!", (50, 75), FONT, 0.6, (200, 200, 255), 1)
 
-    if cv2.waitKey(1) & 0xFF == 27:
-        break
+        cv2.imshow("Gesture Control Pipeline", frame)
 
-nose_tracker.stop()
-cap.release()
-cv2.destroyAllWindows()
+        if cv2.waitKey(1) & 0xFF == 27:
+            break
+
+    nose_tracker.stop()
+    cap.release()
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    run_tracking()
