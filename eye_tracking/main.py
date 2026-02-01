@@ -47,8 +47,8 @@ def move_mouse(x, y):
 # ---------- Settings ----------
 MODEL_PATH = "face_landmarker.task"  # downloaded file
 SMOOTHING = 0.25  # 0.10–0.25
-SCALE_X = 2.0  # sensitivity
-SCALE_Y = 2.0
+SCALE_X = 10.0  # sensitivity
+SCALE_Y = 10.0
 DEADZONE = 1  # pixels to ignore jitter
 
 # Iris landmark indices in FaceLandmarker output (same numbering as FaceMesh)
@@ -59,7 +59,7 @@ options = vision.FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=MODEL_PATH),
     running_mode=vision.RunningMode.VIDEO,
     num_faces=1,
-    output_face_blendshapes=False,
+    output_face_blendshapes=True,
     output_facial_transformation_matrixes=False,
 )
 
@@ -122,8 +122,8 @@ while True:
         dy = (iy - base_iy) * SCALE_Y
 
         # map to screen
-        target_x = int(SCREEN_W / 2 + dx * SCREEN_W)
-        target_y = int(SCREEN_H / 2 + dy * SCREEN_H)
+        target_x = int(SCREEN_W * (0.5 + dx))
+        target_y = int(SCREEN_H * (0.5 + dy))
 
         # clamp
         target_x = max(0, min(SCREEN_W - 1, target_x))
